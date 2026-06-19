@@ -591,3 +591,115 @@ def test_subscriber_exception_is_swallowed() -> None:
     assert received == [0]
     s.value = 7  # both effects notified; boom raises (swallowed), good appends
     assert received == [0, 7]
+
+
+# ---------------------------------------------------------------------------
+# Notification ordering — two-phase flush (PR2 fix)
+#
+# Each test below must pass when run in isolation. They guard the
+# signal → computed → effect topological order inside a single flush and
+# do not rely on side effects left behind by other tests.
+# ---------------------------------------------------------------------------
+
+
+def test_three_level_chain_signal_computed_computed_effect() -> None:
+    """A → B → C → effect(A, C): the effect must observe both A's new value
+    and C's recomputed value in the same snapshot, regardless of the depth of
+    the computed chain.
+    """
+    a = signal(1)
+
+    def b_fn() -> int:
+        return a.value + 1
+
+    b = computed(b_fn)
+
+    def c_fn() -> int:
+        return b.value * 10
+
+    c = computed(c_fn)
+
+    snapshots: list[tuple[int, int]] = []
+    effect(lambda: snapshots.append((a.value, c.value)))
+    assert snapshots == [(1, 20)]  # a=1, b=2, c=20
+    a.value = 4
+    # a=4, b=5, c=50 — single consistent snapshot, not (4, 20).
+    assert snapshots == [(1, 20), (4, 50)]
+
+
+def test_chained_effects_run_after_signal_write() -> None:
+    """effect1 writes a signal during re-run; effect2 (subscribed to that
+    signal) must observe the new value during the same flush.
+    """
+    src = signal(0)
+    relay = signal(0)
+    log: list[str] = []
+
+    def effect1() -> None:
+        log.append(f"e1:{src.value}")
+        # Mirror src → relay so effect2 cascades within the same flush.
+        relay.value = src.value
+
+    def effect2() -> None:
+        log.append(f"e2:{relay.value}")
+
+    effect(effect1)
+    effect(effect2)
+    # Both effects ran once on mount; effect1 set relay to 0 (already 0 —
+    # no notification), so effect2 saw 0 from its own mount.
+    assert log == ["e1:0", "e2:0"]
+    log.clear()
+    src.value = 7
+    # effect1 runs first → sets relay.value = 7 → effect2 must see 7 in the
+    # same flush (cascade through deferred-effects phase 2).
+    assert "e1:7" in log
+    assert "e2:7" in log
+
+
+def test_nested_computed_chain_refreshed_before_effect() -> None:
+    """``a = computed(count)``, ``b = computed(a)``: writing ``count`` must
+    refresh both computeds before any subscribing effect re-runs.
+    """
+    count = signal(10)
+    a = computed(lambda: count.value + 1)
+    b = computed(lambda: a.value * 2)
+    seen: list[int] = []
+    effect(lambda: seen.append(b.value))
+    assert seen == [22]  # count=10, a=11, b=22
+    count.value = 20
+    # count=20, a=21, b=42 — single consistent snapshot.
+    assert seen == [22, 42]
+
+
+def test_multiple_writes_same_signal_in_batch_single_rerun() -> None:
+    """Multiple writes to the same signal within a single batch must trigger
+    exactly one effect re-run observing the final value (independent of any
+    state left by other tests).
+    """
+    s = signal(0)
+    runs: list[int] = []
+    effect(lambda: runs.append(s.value))
+    assert runs == [0]
+
+    def write() -> None:
+        s.value = 1
+        s.value = 2
+        s.value = 3
+
+    batch(write)
+    assert runs == [0, 3]
+
+
+def test_signal_notifies_computed_before_effect_independent() -> None:
+    """Even with a single subscriber ordering quirk (effect subscribed to the
+    Signal before the Computed), the effect must observe the refreshed
+    Computed. This is the minimal repro for the PR2 ordering bug, written so
+    it does not depend on any prior test having populated subscriber sets.
+    """
+    count = signal(1)
+    double = computed(lambda: count.value * 2)
+    results: list[tuple[int, int]] = []
+    effect(lambda: results.append((count.value, double.value)))
+    assert results == [(1, 2)]
+    count.value = 5
+    assert results == [(1, 2), (5, 10)]

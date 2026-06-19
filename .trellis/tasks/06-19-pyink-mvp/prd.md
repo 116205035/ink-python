@@ -95,6 +95,28 @@ PyInk 是基础设施层；Jarvis 是业务层。两者分开，互不耦合。
 - ✅ 代码风格统一
 - ❌ 工作量比 fork + 重写 API 多 1-2 周（总 3-4 周）
 
+### Decision 12: 两阶段 flush 保证 Computed 失效先于 Effect 重跑（PR2 修复）
+
+**Context**: PR1 的 epoch dedupe 机制（Decision 11.7）解决了"effect 同一 flush 内只跑一次"，但没解决**通知顺序**问题。具体场景：effect 同时订阅了 Signal `a` 和派生 Computed `b = computed(a)`，写 `a` 时按订阅顺序通知——effect 的 trigger 比 `b._on_source_changed` 先注册（因为 effect 第一次跑时先读 a 再读 b），所以 effect 先 rerun，此时 `b` 的缓存还是旧值，effect 看到陈旧数据。PR1 的 epoch dedupe 阻止了 `b` 重算后的二次 effect 触发，于是 bug 被锁死。
+
+PR1 测试 35/35 通过是**假象**——其他测试留下的全局状态恰好掩盖了这个 bug，单独跑 `test_computed_in_effect_subscribes_to_both` 就暴露。
+
+**Decision**: 采用**两阶段 flush**（方案 A）：
+
+- **Phase 1**：处理所有 Signal/Computed 的 notification（Computed 标记 dirty + 重算 + 通知下游 Computed）
+- **Phase 2**：drain `_deferred_effects` 队列，逐个跑 effect rerun
+- Effect 的 `_on_dependency_changed` 在 `_notifying=True` 时不再 inline 执行，而是把自己 append 到 `_deferred_effects` 队列
+- 顶层 `_notify` 和 `_flush_batched` 在 phase 1 末尾调用 `_drain_deferred_effects()`
+- drain 循环到队列空为止（处理 phase 2 期间的级联写入）
+
+**Consequences**:
+- ✅ 处理任意深度依赖链（A→B→C→D，effect 读 A 和 D，D 重算完 effect 才跑）
+- ✅ epoch dedupe（Decision 11.7）继续生效——只是它现在作用于 phase 2 而非 inline
+- ✅ 公共 API 不变（signal/computed/effect/ref/batch 签名一致）
+- ✅ 5 个新 ordering 测试，每个独立验证通过
+- ✅ 87 tests pass（PR1 35 + PR1 新增 5 + PR2 42 + PR2 新增 5）
+- 实现位置：`src/pyink/core/signal.py` 的 `_deferred_effects` / `_defer_effect` / `_drain_deferred_effects`
+
 ### Decision 11: Signals 运行时行为细节澄清（PR1 实现中决出）
 
 **Context**: PR1 实现过程中发现 PRD 对几个 edge case 描述模糊，需要锁定行为供后续 PR（reconciler、scheduler）遵循。

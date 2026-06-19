@@ -1,5 +1,19 @@
-"""PyInk reactive core and reconciler (PR1: signals only)."""
+"""PyInk reactive core, reconciler and scheduler."""
 
+from pyink.core.component import (
+    ComponentInstance,
+    HostInstance,
+    Instance,
+)
+from pyink.core.element import (
+    Element,
+    ElementChild,
+    ElementType,
+    HostType,
+    create_element,
+)
+from pyink.core.reconciler import Reconciler
+from pyink.core.scheduler import Scheduler
 from pyink.core.signal import (
     Computed,
     CyclicDependency,
@@ -15,6 +29,7 @@ from pyink.core.signal import (
 )
 
 __all__ = [
+    # Signals
     "CyclicDependency",
     "Computed",
     "Dispose",
@@ -26,6 +41,15 @@ __all__ = [
     "effect",
     "ref",
     "signal",
+    # Element / Component / Reconciler (PR2)
+    "ComponentInstance",
+    "Element",
+    "ElementChild",
+    "ElementType",
+    "HostInstance",
+    "HostType",
+    "Instance",
+    "Reconciler",
+    "Scheduler",
+    "create_element",
 ]
-
-# TODO(PR2): reconciler, component, scheduler

@@ -23,7 +23,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable, Iterable
 from contextlib import suppress
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from typing import Generic, Protocol, TypeVar, runtime_checkable
 
 __all__ = [
@@ -75,6 +75,44 @@ _notifying: ContextVar[bool] = ContextVar("pyink_notifying", default=False)
 _notification_epoch: int = 0
 _epoch_lock = threading.Lock()
 
+#: Deferred effect re-runs queued during a notification flush. Phase 1 of a
+#: flush fires every subscriber (signals → computeds → effects). When an
+#: effect's trigger fires during phase 1 it does *not* re-run inline — instead
+#: it is appended here and re-run in phase 2 after every Computed upstream
+#: has refreshed its cache. This guarantees effects observe a consistent
+#: snapshot (signal value matches derived computed value) regardless of
+#: subscription order or chain depth (A → B → C → … → effect). See
+#: ``Effect._on_dependency_changed``.
+_deferred_effects: list[Callable[[], None]] = []
+_deferred_lock = threading.Lock()
+
+#: Current owning component instance, if any. Set by the reconciler while a
+#: function component body runs so that ``effect(...)`` calls inside the
+#: component auto-bind their dispose to the instance for cleanup on unmount.
+#: The value is an opaque object the reconciler controls; the signal module
+#: only forwards it to :func:`effect`. See PR2 component integration.
+_current_component: ContextVar[object | None] = ContextVar(
+    "pyink_current_component", default=None
+)
+
+
+def _set_current_component(instance: object | None) -> Token[object | None]:
+    """Internal hook for the reconciler to bind a component instance.
+
+    Returns a token the caller passes to :func:`_reset_current_component`.
+    Component instances expose ``_on_effect_created`` / ``_on_effect_disposed``
+    hooks (see :class:`pyink.core.component.ComponentInstance`) which
+    :func:`effect` consults via :func:`getattr` while the instance is active
+    so the dispose callables it creates auto-register with the instance for
+    cleanup on unmount.
+    """
+    return _current_component.set(instance)
+
+
+def _reset_current_component(token: Token[object | None]) -> None:
+    """Internal hook to restore the previous component binding."""
+    _current_component.reset(token)
+
 
 class _Observer:
     """Lightweight observer record.
@@ -121,12 +159,50 @@ def _next_epoch() -> int:
         return _notification_epoch
 
 
+def _defer_effect(run: Callable[[], None]) -> None:
+    """Queue an effect re-run for phase 2 of the current notification flush.
+
+    Deduplicated by identity so a single effect re-runs at most once per
+    flush even when multiple upstream paths notify it (e.g. an effect that
+    reads both a Signal and a Computed derived from it).
+    """
+    with _deferred_lock:
+        for existing in _deferred_effects:
+            if existing is run:
+                return
+        _deferred_effects.append(run)
+
+
+def _drain_deferred_effects() -> None:
+    """Phase 2 — re-run every queued effect in registration order.
+
+    Effects scheduled while draining (e.g. an effect writes a Signal whose
+    subscribers include another effect) are picked up in the same pass.
+    Computed caches are refreshed synchronously during phase 1 of the
+    cascading notification; only effects are deferred.
+    """
+    global _deferred_effects
+    while True:
+        with _deferred_lock:
+            if not _deferred_effects:
+                return
+            pending = _deferred_effects
+            _deferred_effects = []
+        for run in pending:
+            with suppress(Exception):
+                # A subscriber raising should not break the rest of the graph.
+                run()
+
+
 def _notify(subscribers: set[Callable[[], None]]) -> None:
     """Fire every subscriber. Snapshot first so callbacks may mutate the set.
 
     A notification epoch is bumped when entering a top-level flush so that
     effects can collapse redundant triggers (e.g. when they read both a
-    Signal and a Computed derived from that Signal).
+    Signal and a Computed derived from that Signal). The flush is two-phase:
+    phase 1 fires every subscriber (signals, computeds, effects); phase 2
+    re-runs effects that were deferred in phase 1 so they observe the
+    refreshed Computed caches.
     """
     if _batch_depth.get() > 0:
         _schedule_batched(subscribers)
@@ -147,6 +223,7 @@ def _notify(subscribers: set[Callable[[], None]]) -> None:
             with suppress(Exception):
                 # A subscriber raising should not break the rest of the graph.
                 callback()
+        _drain_deferred_effects()
     finally:
         _notifying.reset(token)
 
@@ -184,6 +261,7 @@ def _flush_batched() -> None:
         for callback in callbacks.values():
             with suppress(Exception):
                 callback()
+        _drain_deferred_effects()
     finally:
         _notifying.reset(token)
 
@@ -474,16 +552,24 @@ class Effect:
         # Collapse redundant triggers within a single notification flush. If
         # two paths would notify this effect during the same flush (e.g. an
         # effect that reads both a Signal and a Computed derived from it),
-        # only the first triggers a re-run; subsequent notifications within
-        # the same epoch are no-ops.
+        # only the first defers a re-run; subsequent notifications within the
+        # same epoch are no-ops.
         global _notification_epoch
         if _notifying.get():
             epoch = _notification_epoch
             if epoch == self._last_epoch:
                 return
             self._last_epoch = epoch
-        # Always re-evaluate; deps comparison inside _run decides whether
-        # to actually re-run the fn body.
+            # Phase 2 of the flush will re-run us after upstream Computeds
+            # have refreshed their caches, so we observe a consistent
+            # snapshot. Without this deferral, an effect reading both a
+            # Signal and a Computed derived from it could re-run mid-flush
+            # and observe the Signal's new value alongside the Computed's
+            # stale cached value.
+            _defer_effect(self._run)
+            return
+        # Outside any flush — re-evaluate; deps comparison inside _run
+        # decides whether to actually re-run the fn body.
         self._run()
 
     def dispose(self) -> None:
@@ -520,12 +606,29 @@ def effect(
     fn: Callable[[], Callable[[], None] | None],
     deps: Iterable[object] | None = None,
 ) -> Callable[[], None]:
-    """Register a reactive side-effect; returns a dispose callable."""
+    """Register a reactive side-effect; returns a dispose callable.
+
+    If called from inside a mounted component body (see
+    :func:`_set_current_component`), the returned dispose is also registered
+    with that component instance so it is automatically invoked on unmount —
+    callers do not need to manually dispose effects created during mount.
+    """
     fx = Effect(fn, deps)
+    # Snapshot the component instance at creation time: a later mount of a
+    # different component must not retroactively claim this effect.
+    owning_component = _current_component.get()
 
     def dispose() -> None:
         fx.dispose()
+        if owning_component is not None:
+            unbind = getattr(owning_component, "_on_effect_disposed", None)
+            if callable(unbind):
+                unbind(dispose)
 
+    if owning_component is not None:
+        binder = getattr(owning_component, "_on_effect_created", None)
+        if callable(binder):
+            binder(dispose)
     return dispose
 
 
