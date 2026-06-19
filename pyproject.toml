@@ -49,7 +49,7 @@ select = [
 
 [tool.mypy]
 strict = true
-files = ["src/pyink", "tests"]
+files = ["src/pyink", "tests", "examples"]
 python_version = "3.11"
 
 [tool.pytest.ini_options]
