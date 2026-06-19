@@ -33,6 +33,13 @@ from pyink.core.signal import (
     ref,
     signal,
 )
+from pyink.hooks import (
+    AppHandle,
+    WindowSize,
+    use_app,
+    use_input,
+    use_window_size,
+)
 from pyink.layout import (
     Edges,
     FlexNode,
@@ -87,11 +94,15 @@ __all__ = [
     "Newline",
     "Spacer",
     "Text",
+    # Hooks (PR6)
+    "AppHandle",
+    "WindowSize",
+    "use_app",
+    "use_input",
+    "use_window_size",
     # Render (PR2/PR3 test renderer + PR5 live pipeline)
     "render",
     "render_to_string",
 ]
 
 __version__ = "0.1.0"
-
-# TODO(PR6): from pyink.hooks import use_input, use_app, use_window_size

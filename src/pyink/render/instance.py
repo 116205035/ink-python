@@ -74,10 +74,12 @@ class Instance:
         "render_dispose",
         "exit_callbacks",
         "_unmounted",
+        "_mount_complete",
         "_exit_event",
         "_atexit_registered",
         "_resize_dispose",
         "_sigint_dispose",
+        "_ctrl_c_dispose",
         "_lock",
     )
 
@@ -102,10 +104,12 @@ class Instance:
         self.render_dispose: Callable[[], None] | None = None
         self.exit_callbacks: list[Callable[[], None]] = []
         self._unmounted: bool = False
+        self._mount_complete: bool = False
         self._exit_event: threading.Event = threading.Event()
         self._atexit_registered: bool = False
         self._resize_dispose: Callable[[], None] | None = None
         self._sigint_dispose: Callable[[], None] | None = None
+        self._ctrl_c_dispose: Callable[[], None] | None = None
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------
@@ -301,6 +305,10 @@ class Instance:
         self._sigint_dispose = None
         if sigint_dispose is not None:
             _safe_call(sigint_dispose)
+        ctrl_c_dispose = self._ctrl_c_dispose
+        self._ctrl_c_dispose = None
+        if ctrl_c_dispose is not None:
+            _safe_call(ctrl_c_dispose)
         # Stop the FPS throttle thread — it would otherwise keep running
         # for the lifetime of the process.
         self.throttle.stop()

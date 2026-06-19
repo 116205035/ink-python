@@ -454,6 +454,7 @@ def test_flex_direction_column():
 - **`width=0` 容器渲染时 text 会越界**：layout 报告的 width/height 正确（width=0, height=1），但 `render_layout` 的 sparse grid 允许 text 写到边界外。PR4/PR5 实现 box 边界裁剪后修复。
 - **嵌套 `Text` 颜色继承/覆盖未实现**：`Text("outer", color="green", children=Text("inner", color="red"))` 不会让 inner 继承或覆盖 outer 的颜色——嵌套 text 元素会被递归展平，inner 的样式被丢弃，只剩字符串拼接。ink 有完整的 squash + transform 管道实现这个；Claude Code 实际很少用嵌套 styled Text（grep 数据显示），MVP 接受此简化。后续如需要，可在 PR7 的 `Transform` 组件实现时一并加 squash 管道。
 - **ANSI reset 用 `\x1b[0m` 全 reset，而非 ink 的 `\x1b[39m`/`\x1b[49m` 分离 reset**：chalk level-3 行为，更通用（所有终端支持），与 ink 略有差异但功能等价。ink 自己的 `test/background.tsx:13-22` 也文档化了 chalk/ink 的这个分歧。
+- **F1-F12 不暴露为 `Key` flag**：PyInk 的 `Key` 数据类跟 ink 的 TS `Key` 类型对齐——只有 `input` 字符串 + bool flags（up_arrow/ctrl/shift/alt/tab/return_key 等），没有 `f1`/`f2`/.../`f12` 字段。功能键序列（`ESC OP` 等）目前被静默丢弃。这跟 ink 行为一致。如果 Jarvis 真要功能键支持，未来加 `function_key: int | None` 字段。MVP 不做（Claude Code 也不用功能键）。
 
 ### 永远不做（除非 Jarvis 真要）
 - 完整复刻 Claude Code 的 ink fork（layout engine、optimizer、termio 等专属特性）

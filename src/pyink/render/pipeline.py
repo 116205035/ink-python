@@ -28,6 +28,10 @@ from typing import TextIO
 
 from pyink.core.element import Element
 from pyink.core.reconciler import Reconciler
+from pyink.hooks._runtime import (
+    _reset_current_instance,
+    _set_current_instance,
+)
 from pyink.render.instance import Instance, _FpsThrottle
 from pyink.render.terminal import Terminal
 
@@ -51,6 +55,7 @@ def render(
     tree: Element,
     *,
     stdout: TextIO | None = None,
+    stdin: TextIO | None = None,
     columns: int | None = None,
     rows: int | None = None,
     alternate_screen: bool = False,
@@ -67,6 +72,9 @@ def render(
         render loop.
     stdout:
         Where to write ANSI. Defaults to :data:`sys.stdout`.
+    stdin:
+        Where to read keyboard input from. Defaults to :data:`sys.stdin`.
+        Useful for tests that drive synthetic input through the Terminal.
     columns / rows:
         Fixed viewport size. ``None`` auto-detects via
         :class:`Terminal` (and re-detects on resize). Useful for tests.
@@ -89,7 +97,7 @@ def render(
         the calling thread, :meth:`Instance.unmount` to tear down.
     """
     out: TextIO = stdout if stdout is not None else sys.stdout
-    terminal = Terminal(out)
+    terminal = Terminal(out, stdin=stdin)
     options = RenderOptions(columns=columns, rows=rows)
     reconciler = Reconciler()
     throttle = _FpsThrottle(max_fps=max_fps)
@@ -103,8 +111,15 @@ def render(
     inst.columns = terminal.columns
     inst.rows = terminal.rows
 
-    # Mount the tree (component functions run here, exactly once).
-    inst._mount_initial(tree)
+    # Mount the tree (component functions run here, exactly once). We
+    # bind the Instance to a ContextVar for the duration of mount so
+    # hooks (``use_input`` / ``use_app`` / ``use_window_size``) called
+    # from inside component bodies can find it.
+    token = _set_current_instance(inst)
+    try:
+        inst._mount_initial(tree)
+    finally:
+        _reset_current_instance(token)
 
     # Optional alternate screen.
     if alternate_screen:
@@ -122,6 +137,20 @@ def render(
     atexit.register(inst.cleanup)
     if exit_on_ctrl_c:
         inst._sigint_dispose = _install_sigint(inst)
+
+    # Mark mount complete before subscribing the raw-mode Ctrl+C
+    # listener — that subscription starts the input-reader thread, and
+    # we don't want a queued key to fire ``app.exit()`` → ``unmount``
+    # before the rest of the setup is finished.
+    inst._mount_complete = True
+
+    if exit_on_ctrl_c:
+        _install_raw_ctrl_c(terminal, inst)
+
+    # Now that all disposes are wired up, start the input-reader thread
+    # (if any subscribers exist). Order matters: subscribers register
+    # during component mount, but the reader only starts here.
+    terminal.enable_input()
 
     return inst
 
@@ -175,3 +204,21 @@ def _on_sigint(signum: int, frame: object) -> None:
     if callable(prev) and prev is not None:
         with suppress(Exception):
             prev(signum, frame)
+
+
+def _install_raw_ctrl_c(terminal: Terminal, inst: Instance) -> None:
+    """Subscribe a Ctrl+C listener for raw mode. No-op on non-TTY.
+
+    Should only be called once ``inst._mount_complete`` is ``True`` —
+    otherwise the reader thread may fire a handler that calls
+    ``inst.unmount()`` before the rest of the mount has finished.
+    """
+    from pyink.render.keys import Key
+
+    def on_key(key: Key) -> None:
+        # In raw mode Ctrl+C arrives as byte 0x03 → Key(input='c', ctrl=True).
+        if key.ctrl and key.input == "c":
+            with suppress(Exception):
+                inst.unmount()
+
+    inst._ctrl_c_dispose = terminal.on_key(on_key)
