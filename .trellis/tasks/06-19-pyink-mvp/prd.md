@@ -455,6 +455,8 @@ def test_flex_direction_column():
 - **嵌套 `Text` 颜色继承/覆盖未实现**：`Text("outer", color="green", children=Text("inner", color="red"))` 不会让 inner 继承或覆盖 outer 的颜色——嵌套 text 元素会被递归展平，inner 的样式被丢弃，只剩字符串拼接。ink 有完整的 squash + transform 管道实现这个；Claude Code 实际很少用嵌套 styled Text（grep 数据显示），MVP 接受此简化。后续如需要，可在 PR7 的 `Transform` 组件实现时一并加 squash 管道。
 - **ANSI reset 用 `\x1b[0m` 全 reset，而非 ink 的 `\x1b[39m`/`\x1b[49m` 分离 reset**：chalk level-3 行为，更通用（所有终端支持），与 ink 略有差异但功能等价。ink 自己的 `test/background.tsx:13-22` 也文档化了 chalk/ink 的这个分歧。
 - **F1-F12 不暴露为 `Key` flag**：PyInk 的 `Key` 数据类跟 ink 的 TS `Key` 类型对齐——只有 `input` 字符串 + bool flags（up_arrow/ctrl/shift/alt/tab/return_key 等），没有 `f1`/`f2`/.../`f12` 字段。功能键序列（`ESC OP` 等）目前被静默丢弃。这跟 ink 行为一致。如果 Jarvis 真要功能键支持，未来加 `function_key: int | None` 字段。MVP 不做（Claude Code 也不用功能键）。
+- **Static items 源类型扩展**：PRD 原签名 `items: list[T]`，但函数组件只跑一次，普通 list 不会增量更新。实际接受 `list[T] | Signal[list[T]] | Callable[[], list[T]]`——Signal/Callable 源响应式更新（新增 items 触发渲染），普通 list 只渲染一次（mount snapshot）。
+- **Transform / Static 在 `render_to_string` 下宽度检测不准**：Transform 和 Static 在没有 active Instance 时（如 `render_to_string` 调用）fallback 到 80 列，不读 outer render 的 `columns` 参数。PR8+ 如有需要，可通过 ContextVar 把 columns 透传。MVP 阶段影响小（大部分 transform 是单行内容）。
 
 ### 永远不做（除非 Jarvis 真要）
 - 完整复刻 Claude Code 的 ink fork（layout engine、optimizer、termio 等专属特性）

@@ -73,6 +73,8 @@ class Instance:
         "throttle",
         "render_dispose",
         "exit_callbacks",
+        "static_lines",
+        "_static_dirty",
         "_unmounted",
         "_mount_complete",
         "_exit_event",
@@ -103,6 +105,12 @@ class Instance:
         self.throttle: _FpsThrottle = throttle
         self.render_dispose: Callable[[], None] | None = None
         self.exit_callbacks: list[Callable[[], None]] = []
+        # Static-output region (PR7): text written via :meth:`write_static`
+        # is flushed above the current frame on the next paint. The buffer
+        # holds not-yet-flushed chunks; ``_static_dirty`` flips True on a
+        # new write and back to False once the paint loop has flushed.
+        self.static_lines: list[str] = []
+        self._static_dirty: bool = False
         self._unmounted: bool = False
         self._mount_complete: bool = False
         self._exit_event: threading.Event = threading.Event()
@@ -175,6 +183,32 @@ class Instance:
             return
         write_diff(frame, "", self.stdout)
         self.stdout.flush()
+
+    def write_static(self, text: str) -> None:
+        """Append ``text`` to the permanent output region above the frame.
+
+        Used by :func:`pyink.components.static.Static`. The text is written
+        above the live frame on the next paint — already-rendered lines are
+        never re-painted by the frame diff, so they accumulate like ordinary
+        stdout output (and scroll off the top of the viewport normally).
+
+        Each call triggers a synchronous paint so the new lines appear
+        immediately rather than waiting for the next signal-driven flush.
+
+        ``text`` should be the final rendered string (ANSI styling allowed)
+        and may span multiple lines. The caller is responsible for any
+        trailing newline — passing ``"Item 0\\nItem 1\\n"`` places each
+        item on its own row with the next frame painted immediately below.
+        """
+        if not text:
+            return
+        with self._lock:
+            if self._unmounted:
+                return
+            self.static_lines.append(text)
+            self._static_dirty = True
+        # Synchronous paint so static text appears immediately.
+        self._paint_now()
 
     def cleanup(self) -> None:
         """unmount + remove from atexit registry. Safe to call multiple times."""
@@ -249,6 +283,28 @@ class Instance:
             prev_frame = self.current_frame
             cols = self._resolve_columns()
             rows = self._resolve_rows()
+            static_dirty = self._static_dirty
+            static_chunks = list(self.static_lines) if static_dirty else []
+        if static_dirty and static_chunks:
+            # Compute the new frame first so we can repaint in one pass.
+            if mounted is None:
+                new_frame = ""
+            else:
+                try:
+                    layout_tree = layout(mounted, columns=cols, rows=rows)
+                    new_frame = render_layout_to_string(layout_tree)
+                except Exception:  # pragma: no cover
+                    return
+            static_text = "".join(static_chunks)
+            self._flush_static_and_frame(prev_frame, new_frame, static_text)
+            with self._lock:
+                if not self._unmounted:
+                    self.static_lines.clear()
+                    self._static_dirty = False
+                    self.current_frame = new_frame
+                    self.columns = cols
+                    self.rows = rows if rows is not None else 0
+            return
         if mounted is None:
             new_frame = ""
         else:
@@ -270,6 +326,48 @@ class Instance:
                 self.current_frame = new_frame
                 self.columns = cols
                 self.rows = rows if rows is not None else 0
+
+    def _flush_static_and_frame(
+        self,
+        prev_frame: str,
+        new_frame: str,
+        static_text: str,
+    ) -> None:
+        """Flush accumulated static text and repaint the live frame.
+
+        Sequence:
+
+        1. Erase the previous live frame (cursor-up + per-line ``\\x1b[2K``)
+           — the cursor ends on the first row of the (now blank) frame
+           region, which is exactly one line below the existing static
+           output.
+        2. Write ``static_text`` from that position. Each ``\\n`` inside it
+           advances to the next row; when the cursor would walk past the
+           bottom of the viewport the terminal scrolls, pushing older
+           static lines up — which is precisely the desired behaviour for
+           log-style output.
+        3. Write the new live frame as a fresh initial paint so its cursor
+           park lands on the new frame's first row.
+
+        This routine deliberately avoids ``\\x1b[2J`` (full-screen clear)
+        so PRD Decision 3 (inline mode never destroys scrollback) holds.
+        """
+        # Step 1 — clear the previous frame. ``write_diff`` with an empty
+        # new frame erases each row and parks the cursor at row 0.
+        if prev_frame:
+            write_diff(prev_frame, "", self.stdout)
+        # Step 2 — append the new static text. ``write_diff(None, new_frame)``
+        # below treats whatever the cursor lands on as the new frame origin,
+        # so we do not need to track absolute coordinates here.
+        self.stdout.write(static_text)
+        self.stdout.flush()
+        # Step 3 — paint the new frame from the cursor's current position.
+        if new_frame:
+            write_diff(None, new_frame, self.stdout)
+        else:
+            # No live frame — emit CR so subsequent paints start at col 1.
+            self.stdout.write("\r")
+        self.stdout.flush()
 
     def _resolve_columns(self) -> int:
         override = getattr(self.options, "columns", None)

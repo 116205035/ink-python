@@ -344,6 +344,15 @@ def build_flex_tree(instance: Any) -> FlexNode | None:
             return None
         return FlexNode(kind="box", style=FlexStyle(), children=kids, source=instance)
     if isinstance(instance, HostInstance):
+        # PR7: a host box flagged ``_pyink_static`` (emitted by the Static
+        # component) is a layout sentinel — its content has already been
+        # written to stdout above the live frame, so the layout engine
+        # must treat it as zero-sized and never position its children.
+        if (
+            instance.element.type == "box"
+            and instance.element.props.get("_pyink_static") is True
+        ):
+            return None
         return _build_host_node(instance)
     return None
 
