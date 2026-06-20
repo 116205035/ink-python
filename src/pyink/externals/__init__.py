@@ -13,6 +13,7 @@ from pyink.externals.link import Link
 from pyink.externals.markdown import DEFAULT_MARKDOWN_THEME, Markdown
 from pyink.externals.spinner import SPINNERS, Spinner
 from pyink.externals.streaming_text import StreamingText
+from pyink.externals.text_input import TextInput
 
 __all__ = [
     "DEFAULT_MARKDOWN_THEME",
@@ -25,4 +26,5 @@ __all__ = [
     "Spinner",
     "StreamingText",
     "StructuredDiff",
+    "TextInput",
 ]
