@@ -21,11 +21,15 @@ classifiers = [
 dependencies = ["wcwidth>=0.2.0"]
 
 [project.optional-dependencies]
+highlight = ["pygments>=2.14"]
+markdown = ["markdown-it-py>=3.0"]
+all = ["pyink[highlight,markdown]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov",
     "ruff",
     "mypy",
+    "types-Pygments",
 ]
 
 [tool.hatch.build.targets.wheel]

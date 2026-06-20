@@ -7,12 +7,15 @@ stay out of the default namespace).
 """
 
 from pyink.externals.divider import Divider
+from pyink.externals.highlighted_code import DEFAULT_THEME, HighlightedCode
 from pyink.externals.link import Link
 from pyink.externals.spinner import SPINNERS, Spinner
 from pyink.externals.streaming_text import StreamingText
 
 __all__ = [
+    "DEFAULT_THEME",
     "Divider",
+    "HighlightedCode",
     "Link",
     "SPINNERS",
     "Spinner",
