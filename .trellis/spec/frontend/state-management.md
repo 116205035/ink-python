@@ -105,6 +105,103 @@ from jarvis.state import messages
 
 ---
 
+## Tree-Scoped State: Context System (Phase 2)
+
+For state that should be **scoped to a subtree** (not global), use the Context system. Provider injects a value; descendants read it via `use_context`. Like React Context / Vue provide-inject / SolidJS context.
+
+```python
+from pyink.core.context import create_context, Provider
+from pyink.hooks.context import use_context
+
+# Module-level constant
+ThemeContext = create_context("light")
+
+def App():
+    return Provider(ThemeContext, "dark",
+        Header(),
+        Body(),
+    )
+
+def Header():
+    theme = use_context(ThemeContext)  # "dark"
+    return Text(f"theme: {theme}")
+```
+
+### Provider semantics (IMPORTANT)
+
+PyInk components run **once at mount**, so `use_context` only reads during the mount traversal. The Provider's value is **pushed at the start of its subtree's mount, popped at the end** (NOT pushed-on-mount / popped-on-unmount like React).
+
+This means sibling subtrees mounted AFTER a Provider do NOT inherit that Provider's value:
+
+```python
+Provider(outer,
+    Provider(inner, <Consumer/>),     # reads "inner"
+    <Consumer/>,                       # reads "outer" (NOT "inner")
+)
+```
+
+The stack is **empty between mounts**. Don't rely on Provider values persisting after its own subtree finishes mounting.
+
+### When to use Context vs globals vs props
+
+| Pattern | Use when |
+|---|---|
+| **Context** | Tree-scoped value read by multiple descendants at varying depths (theme, focus manager, i18n) |
+| **Module-level signal** | Truly global state read anywhere (app config, current user) |
+| **Props** | Parent-to-direct-child value, no descendants need it |
+
+### Reactive Provider values
+
+If you need the Provider value itself to be reactive, pass a `Signal` as the value:
+
+```python
+theme_sig = signal("light")
+Provider(ThemeContext, theme_sig, ...)
+
+def Header():
+    theme_sig = use_context(ThemeContext)  # the Signal itself
+    return Text(lambda: theme_sig.value)   # subscribe via callable
+```
+
+Don't try to swap Provider values at runtime — mutate internal signals instead.
+
+### Built-in Contexts
+
+- `_FOCUS_MANAGER_CONTEXT` (in `pyink.hooks.focus`): used by `use_focus` to find the nearest `FocusManager`. Default is `NullFocusManager` (no-op).
+
+## Refs (non-reactive holders)
+
+`ref(initial)` is for **mutable values that should NOT trigger re-renders**: timer handles, raw-mode flags, caches, and (Phase 2) LayoutNode back-references for `measure_element`.
+
+```python
+def PollingWidget():
+    timer_ref = ref(None)
+    box_ref = ref(None)  # for measure_element
+
+    def setup():
+        timer_ref.value = setInterval(tick, 1000)
+        return lambda: clearInterval(timer_ref.value)
+    effect(setup, deps=[])
+
+    return Box(Text("..."), ref=box_ref)
+```
+
+### Box ref + measure_element (Phase 2)
+
+Pass `ref=` to Box; after each layout pass, the corresponding LayoutNode is written to `ref.value`. Read it via `measure_element` (sync) or `use_box_metrics` (reactive Computed):
+
+```python
+box_ref = ref(None)
+metrics = use_box_metrics(box_ref)  # Computed[BoxMetrics]
+
+return Box(
+    Text(lambda: f"width={metrics.value.width}"),
+    Box(..., ref=box_ref),
+)
+```
+
+`ref.value` is `None` before first layout; `metrics.value.has_measured` indicates this. On unmount, `ref.value` is reset to `None`.
+
 ## When to Use Global State
 
 Use module-level signals when:
