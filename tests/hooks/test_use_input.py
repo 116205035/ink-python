@@ -2,13 +2,12 @@
 
 Components mount via :func:`pyink.render.render` so the active-Instance
 ContextVar is populated. Synthetic input bytes are fed through the
-Terminal's input loop by patching ``os.read`` + ``_wait_for_input``.
+Terminal's input loop by patching ``_read_stdin_chunk`` + ``_wait_for_input``.
 """
 
 from __future__ import annotations
 
 import io
-import os as _os
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -33,7 +32,7 @@ class _FakeTTY(io.StringIO):
 
 
 def _patch_input(bytes_iter: Iterator[bytes], monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch ``os.read`` + ``_wait_for_input`` + raw-mode methods."""
+    """Patch ``_read_stdin_chunk`` + ``_wait_for_input`` + raw-mode methods."""
 
     lock = threading.Lock()
     exhausted = {"value": False}
@@ -49,8 +48,9 @@ def _patch_input(bytes_iter: Iterator[bytes], monkeypatch: pytest.MonkeyPatch) -
                 exhausted["value"] = True
                 return b""
 
-    # Patch the actual ``os`` module (Terminal imports it as ``os``).
-    monkeypatch.setattr(_os, "read", fake_read)
+    # Patch the terminal module's read helper so the same fake works on
+    # both Unix (``os.read``) and Windows (``msvcrt.getch``-based) paths.
+    monkeypatch.setattr(_term_mod, "_read_stdin_chunk", fake_read)
     monkeypatch.setattr(_term_mod, "_wait_for_input", lambda fd, timeout: True)
     monkeypatch.setattr(Terminal, "_enter_raw_mode_unix", lambda self: None)
     monkeypatch.setattr(Terminal, "_exit_raw_mode_unix", lambda self: None)

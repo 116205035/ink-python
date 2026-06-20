@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import os as _os
 import threading
 import time
 from unittest.mock import patch
@@ -101,7 +100,7 @@ def test_use_app_exit_from_input_handler() -> None:
             return b""
 
     with (
-        patch.object(_os, "read", fake_read),
+        patch.object(_term_mod, "_read_stdin_chunk", fake_read),
         patch.object(_term_mod, "_wait_for_input", lambda fd, timeout: True),
         patch.object(Terminal, "_enter_raw_mode_unix", lambda self: None),
         patch.object(Terminal, "_exit_raw_mode_unix", lambda self: None),

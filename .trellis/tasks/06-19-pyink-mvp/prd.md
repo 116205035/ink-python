@@ -457,6 +457,7 @@ def test_flex_direction_column():
 - **F1-F12 不暴露为 `Key` flag**：PyInk 的 `Key` 数据类跟 ink 的 TS `Key` 类型对齐——只有 `input` 字符串 + bool flags（up_arrow/ctrl/shift/alt/tab/return_key 等），没有 `f1`/`f2`/.../`f12` 字段。功能键序列（`ESC OP` 等）目前被静默丢弃。这跟 ink 行为一致。如果 Jarvis 真要功能键支持，未来加 `function_key: int | None` 字段。MVP 不做（Claude Code 也不用功能键）。
 - **Static items 源类型扩展**：PRD 原签名 `items: list[T]`，但函数组件只跑一次，普通 list 不会增量更新。实际接受 `list[T] | Signal[list[T]] | Callable[[], list[T]]`——Signal/Callable 源响应式更新（新增 items 触发渲染），普通 list 只渲染一次（mount snapshot）。
 - **Transform / Static 在 `render_to_string` 下宽度检测不准**：Transform 和 Static 在没有 active Instance 时（如 `render_to_string` 调用）fallback 到 80 列，不读 outer render 的 `columns` 参数。PR8+ 如有需要，可通过 ContextVar 把 columns 透传。MVP 阶段影响小（大部分 transform 是单行内容）。
+- **Windows raw mode 必须开 `ENABLE_VIRTUAL_TERMINAL_INPUT`**：PR6 原版的 `_enter_raw_mode_windows` 只关 echo/line/processed 三位，没开 VT 输入。结果是：Windows 控制台继续发 legacy `INPUT_RECORD`，`os.read` 读到空字节或孤零零的 1 字节，方向键 / Tab / 功能键全部丢失。修复在 `terminal.py:_enter_raw_mode_windows` —— OR-in `ENABLE_VIRTUAL_TERMINAL_INPUT (0x0200)` 让控制台把特殊键翻译成 ANSI escape sequence（`\x1b[A` 等），跟 Unix 一致。同时 `_read_stdin_chunk` 在 Windows 用 `msvcrt.getch()` 逐字节 drain 出队列里所有可用字节（`os.read` 在 Windows 控制台 handle 上单次只返回 1 字节，会把 `\x1b[A` 拆成三次循环 tick，后半段丢失）。mock 测试覆盖：`test_windows_raw_mode_enables_virtual_terminal_input`、`test_windows_read_drains_multi_byte_escape_sequence`、`test_windows_input_loop_delivers_arrow_key`。诊断 example：`examples/debug-input/debug_input.py`。
 
 ### 永远不做（除非 Jarvis 真要）
 - 完整复刻 Claude Code 的 ink fork（layout engine、optimizer、termio 等专属特性）

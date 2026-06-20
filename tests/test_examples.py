@@ -149,6 +149,21 @@ def test_use_focus_example_runs() -> None:
     assert "\x1b[2J" not in out
 
 
+def test_debug_input_example_runs() -> None:
+    """The debug-input example mounts without raising.
+
+    This example is the diagnostic tool for input issues — it doesn't
+    drive any interaction on its own (just waits for keys).
+    """
+    mod = _load_example_module(
+        "debug-input/debug_input.py", "pyink_example_debug_input"
+    )
+    out = _run_example(mod.DebugInput(), columns=80, rows=24, run_seconds=0.2)
+    assert "Press keys" in out
+    assert "Last:" in out
+    assert "\x1b[2J" not in out
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle — every example must unmount cleanly even if signals keep
 # writing from a background thread (counter, static).
@@ -190,6 +205,7 @@ def test_counter_unmount_is_idempotent_after_run() -> None:
         "static/static.py",
         "use-input/use_input_demo.py",
         "use-focus/use_focus_demo.py",
+        "debug-input/debug_input.py",
     ],
 )
 def test_example_file_exists(rel_path: str) -> None:

@@ -3,13 +3,12 @@
 The Terminal raw-mode entry/exit logic is Unix-only and would mess with
 the test runner's own stdin. These tests use monkey-patching to fake a
 TTY (so ``is_raw_mode_supported`` returns True) and a fake
-``os.read`` to drive synthetic bytes through the input loop.
+``_read_stdin_chunk`` to drive synthetic bytes through the input loop.
 """
 
 from __future__ import annotations
 
 import io
-import os as _os
 import time
 from collections.abc import Callable
 from unittest.mock import patch
@@ -165,7 +164,7 @@ def test_on_key_subscribes_and_starts_reader(tty_terminal: Terminal) -> None:
             return b""
 
     with (
-        patch.object(_os, "read", fake_read),
+        patch.object(_term_mod, "_read_stdin_chunk", fake_read),
         patch.object(_term_mod, "_wait_for_input", lambda fd, timeout: True),
         _patch_raw(lambda self: None, lambda self: None),
     ):
@@ -189,7 +188,7 @@ def test_on_key_dispose_stops_callbacks(tty_terminal: Terminal) -> None:
         return b""
 
     with (
-        patch.object(_os, "read", fake_read),
+        patch.object(_term_mod, "_read_stdin_chunk", fake_read),
         _patch_raw(lambda self: None, lambda self: None),
     ):
         dispose = tty_terminal.on_key(lambda k: None)
@@ -210,7 +209,7 @@ def test_multiple_subscribers_all_receive_key(tty_terminal: Terminal) -> None:
         return b"x"
 
     with (
-        patch.object(_os, "read", fake_read),
+        patch.object(_term_mod, "_read_stdin_chunk", fake_read),
         patch.object(_term_mod, "_wait_for_input", lambda fd, timeout: True),
         _patch_raw(lambda self: None, lambda self: None),
     ):
@@ -249,7 +248,7 @@ def test_bad_handler_does_not_kill_reader_loop(tty_terminal: Terminal) -> None:
             return b""
 
     with (
-        patch.object(_os, "read", fake_read),
+        patch.object(_term_mod, "_read_stdin_chunk", fake_read),
         patch.object(_term_mod, "_wait_for_input", lambda fd, timeout: True),
         _patch_raw(lambda self: None, lambda self: None),
     ):
@@ -263,3 +262,184 @@ def test_bad_handler_does_not_kill_reader_loop(tty_terminal: Terminal) -> None:
         good()
     assert call_count["n"] >= 1
     assert received_after_crash, "good handler should still receive keys after a crash"
+
+
+# ---------------------------------------------------------------------------
+# Windows-specific tests
+#
+# These exercise the Windows raw-mode SetConsoleMode logic and the
+# Windows input-read path (``msvcrt``-based) by mocking the ctypes /
+# msvcrt modules. They run on any platform because we never touch a real
+# console handle — we patch ``_PLATFORM`` to "windows" and stub the
+# Win32 API surface.
+# ---------------------------------------------------------------------------
+
+
+def test_windows_raw_mode_enables_virtual_terminal_input(
+    tty_terminal: Terminal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``enter_raw_mode`` on Windows must OR-in ``ENABLE_VIRTUAL_TERMINAL_INPUT``.
+
+    Without this flag the Windows console emits legacy ``INPUT_RECORD``
+    structs (not ANSI sequences), so arrow / Tab / function keys would
+    never arrive as bytes through ``msvcrt``.
+    """
+    captured: dict[str, int] = {}
+
+    class _FakeDWORD:
+        def __init__(self, value: int = 0) -> None:
+            self.value = value
+
+    class _FakeKernel32:
+        STD_INPUT_HANDLE = -10
+
+        def GetStdHandle(self, _handle: int) -> int:
+            return 1234
+
+        def GetConsoleMode(self, _handle: int, mode_ref: object) -> int:
+            # Pre-existing mode includes echo + line + processed input.
+            assert isinstance(mode_ref, _FakeDWORD)
+            mode_ref.value = 0xE7  # arbitrary existing console mode
+            return 1
+
+        def SetConsoleMode(self, _handle: int, mode: int) -> int:
+            captured["new_mode"] = mode
+            return 1
+
+    # Build a fake ``ctypes`` module surface.
+    class _FakeCtypes:
+        windll = type("windll", (), {"kernel32": _FakeKernel32()})()
+
+        @staticmethod
+        def byref(obj: object) -> object:
+            return obj
+
+        class wintypes:  # noqa: N801 - mirrors real module name
+            DWORD = _FakeDWORD
+
+    # ``_enter_raw_mode_windows`` does a local ``import ctypes`` and a
+    # ``from ctypes import wintypes``; patch sys.modules to swap them.
+    import sys
+
+    monkeypatch.setitem(sys.modules, "ctypes", _FakeCtypes)
+    monkeypatch.setitem(sys.modules, "ctypes.wintypes", _FakeCtypes.wintypes)
+
+    tty_terminal._enter_raw_mode_windows()
+
+    ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
+    ENABLE_ECHO_INPUT = 0x0004
+    ENABLE_LINE_INPUT = 0x0002
+    ENABLE_PROCESSED_INPUT = 0x0001
+    new_mode = captured["new_mode"]
+    assert new_mode & ENABLE_VIRTUAL_TERMINAL_INPUT, (
+        "ENABLE_VIRTUAL_TERMINAL_INPUT must be set so the console "
+        "translates special keys into ANSI escape sequences"
+    )
+    assert not (new_mode & ENABLE_ECHO_INPUT), "echo must be disabled"
+    assert not (new_mode & ENABLE_LINE_INPUT), "line buffering must be disabled"
+    assert not (new_mode & ENABLE_PROCESSED_INPUT), (
+        "processed input must be disabled so Ctrl+C arrives as 0x03"
+    )
+
+
+def test_windows_raw_mode_exit_restores_previous_mode(
+    tty_terminal: Terminal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``exit_raw_mode`` restores the previously-saved console mode."""
+    restored: dict[str, int] = {}
+
+    class _FakeKernel32:
+        def GetStdHandle(self, _h: int) -> int:
+            return 1234
+
+        def SetConsoleMode(self, _h: int, mode: int) -> int:
+            restored["mode"] = mode
+            return 1
+
+    class _FakeCtypes:
+        windll = type("windll", (), {"kernel32": _FakeKernel32()})()
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "ctypes", _FakeCtypes)
+    monkeypatch.setitem(sys.modules, "ctypes.wintypes", type("wintypes", (), {}))
+
+    tty_terminal._prev_console_mode = 0x1A7
+    tty_terminal._exit_raw_mode_windows()
+    assert restored["mode"] == 0x1A7
+    assert tty_terminal._prev_console_mode is None
+
+
+def test_windows_read_drains_multi_byte_escape_sequence(
+    tty_terminal: Terminal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Windows read path must drain a full ``\\x1b[A`` in one chunk.
+
+    Windows + ``ENABLE_VIRTUAL_TERMINAL_INPUT`` delivers arrow keys as
+    three separate ``msvcrt.getch()`` calls. The reader has to pull all
+    three bytes in one ``_read_stdin_chunk`` call so the key parser sees
+    the complete sequence; otherwise the second ``os.read`` loop tick
+    would lose the tail and only the lone ``\\x1b`` would surface.
+    """
+    # Bytes the mocked msvcrt.getch() yields in order.
+    queued = [b"\x1b", b"[", b"A"]
+    kbhit_returns = [True, True, True, False]
+
+    class _FakeMsvcrt:
+        @staticmethod
+        def kbhit() -> bool:
+            return kbhit_returns.pop(0) if kbhit_returns else False
+
+        @staticmethod
+        def getch() -> bytes:
+            return queued.pop(0)
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "msvcrt", _FakeMsvcrt)
+    monkeypatch.setattr(_term_mod, "_PLATFORM", "windows")
+
+    chunk = _term_mod._read_stdin_chunk(fd=0, max_bytes=64)
+    assert chunk == b"\x1b[A", (
+        f"expected full ESC[A in one chunk, got {chunk!r}"
+    )
+
+
+def test_windows_input_loop_delivers_arrow_key(
+    tty_terminal: Terminal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end Windows path: msvcrt bytes → Key(up_arrow=True).
+
+    The reader thread pulls via ``_read_stdin_chunk`` (Windows branch),
+    feeds the chunk through the key parser, and dispatches the resulting
+    Key to every subscriber. A multi-byte escape sequence arriving in a
+    single chunk is the exact scenario that broke on real Windows before
+    the fix.
+    """
+    received: list[Key] = []
+
+    chunks = iter([b"\x1b[A"])  # one Up arrow, delivered in a single chunk
+
+    def fake_read(fd: int, n: int) -> bytes:
+        try:
+            return next(chunks)
+        except StopIteration:
+            time.sleep(0.05)
+            return b""
+
+    with (
+        patch.object(_term_mod, "_read_stdin_chunk", fake_read),
+        patch.object(_term_mod, "_wait_for_input", lambda fd, timeout: True),
+        _patch_raw(lambda self: None, lambda self: None),
+    ):
+        dispose = tty_terminal.on_key(lambda k: received.append(k))
+        tty_terminal.enable_input()
+        for _ in range(80):
+            if received:
+                break
+            time.sleep(0.025)
+        dispose()
+    assert received
+    assert received[0].up_arrow, (
+        f"arrow escape should parse to up_arrow=True, got {received[0]!r}"
+    )

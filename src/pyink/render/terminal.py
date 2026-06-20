@@ -417,15 +417,33 @@ class Terminal:
         with suppress(termios_any.error, OSError):
             termios_any.tcsetattr(fd, termios_any.TCSANOW, prev)
 
-    def _enter_raw_mode_windows(self) -> None:  # pragma: no cover (Windows)
+    def _enter_raw_mode_windows(self) -> None:
+        """Flip stdin into raw mode on Windows.
+
+        Two things must happen for keystrokes to arrive byte-by-byte:
+
+        1. Disable ``ENABLE_ECHO_INPUT`` / ``ENABLE_LINE_INPUT`` /
+           ``ENABLE_PROCESSED_INPUT`` so input is unbuffered, not echoed,
+           and Ctrl+C is delivered as a byte (``\\x03``) instead of raising
+           ``SIGINT``.
+        2. Enable ``ENABLE_VIRTUAL_TERMINAL_INPUT`` so the console
+           translates special keys (arrows, Tab, F1-F12, Home/End, …) into
+           ANSI escape sequences (``\\x1b[A``, ``\\x1b[15~``, …) before
+           handing them to the reader. Without this flag the console
+           emits raw ``INPUT_RECORD`` structs that ``os.read`` cannot
+           decode into VT sequences — arrow keys / Tab simply vanish.
+
+        ``ENABLE_VIRTUAL_TERMINAL_INPUT`` is mutually exclusive with the
+        legacy echo/line flags, so we set it on top of the cleared bits.
+        """
         try:
             import ctypes
             from ctypes import wintypes
-        except ImportError:
+        except ImportError:  # pragma: no cover
             return
         try:
             handle = ctypes.windll.kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
-        except OSError:
+        except OSError:  # pragma: no cover
             return
         kernel32 = ctypes.windll.kernel32
         mode = wintypes.DWORD()
@@ -435,13 +453,18 @@ class Terminal:
         ENABLE_ECHO_INPUT = 0x0004
         ENABLE_LINE_INPUT = 0x0002
         ENABLE_PROCESSED_INPUT = 0x0001
-        new_mode = mode.value & ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT)
+        ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
+        new_mode = mode.value & ~(
+            ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT
+        )
+        new_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT
         kernel32.SetConsoleMode(handle, new_mode)
 
-    def _exit_raw_mode_windows(self) -> None:  # pragma: no cover (Windows)
+    def _exit_raw_mode_windows(self) -> None:
+        """Restore the original Windows console mode (idempotent)."""
         try:
             import ctypes
-        except ImportError:
+        except ImportError:  # pragma: no cover
             return
         prev = self._prev_console_mode
         self._prev_console_mode = None
@@ -449,7 +472,7 @@ class Terminal:
             return
         try:
             handle = ctypes.windll.kernel32.GetStdHandle(-10)
-        except OSError:
+        except OSError:  # pragma: no cover
             return
         ctypes.windll.kernel32.SetConsoleMode(handle, prev)
 
@@ -490,7 +513,7 @@ class Terminal:
                     return None
                 continue
             try:
-                data = os.read(fd, self.READ_CHUNK)
+                data = _read_stdin_chunk(fd, self.READ_CHUNK)
             except (BlockingIOError, OSError):
                 return None
             if not data:
@@ -592,8 +615,8 @@ class Terminal:
             if not _wait_for_input(fd, 0.05):
                 continue
             try:
-                data = os.read(fd, self.READ_CHUNK)
-            except (BlockingIOError, OSError):  # pragma: no cover
+                data = _read_stdin_chunk(fd, self.READ_CHUNK)
+            except (BlockingIOError, OSError):
                 # Repeated read failures (e.g. fd closed under us)
                 # mean the input source is gone — bail out instead of
                 # busy-spinning.
@@ -678,7 +701,7 @@ def _wait_for_input(fd: int, timeout: float | None) -> bool:
     :func:`select.select` on Unix; on Windows we approximate with a
     busy-poll since ``select`` only works on sockets there.
     """
-    if _PLATFORM == "windows":  # pragma: no cover (Windows)
+    if _PLATFORM == "windows":
         # msvcrt.kbhit polls the console input buffer. Loop with a short
         # sleep so we honour ``timeout``.
         import msvcrt
@@ -696,6 +719,28 @@ def _wait_for_input(fd: int, timeout: float | None) -> bool:
         return bool(rlist)
     rlist, _, _ = select.select([fd], [], [], timeout)
     return bool(rlist)
+
+
+def _read_stdin_chunk(fd: int, max_bytes: int) -> bytes:
+    """Read up to ``max_bytes`` from stdin in a platform-correct way.
+
+    On Unix we use :func:`os.read` directly. On Windows we use
+    :func:`msvcrt.getch` byte-by-byte and drain every currently-available
+    byte in one call — :func:`os.read` on a Windows console handle (when
+    VT input mode is enabled) returns a single byte per call and drops
+    the rest, which would fragment multi-byte escape sequences
+    (``\\x1b[A`` arrives across three ``os.read`` calls and the second
+    half gets lost to the next loop iteration). Pulling all available
+    bytes in one go keeps each escape sequence atomic.
+    """
+    if _PLATFORM == "windows":
+        import msvcrt
+
+        chunks: list[bytes] = []
+        while msvcrt.kbhit() and len(chunks) < max_bytes:
+            chunks.append(msvcrt.getch())
+        return b"".join(chunks)
+    return os.read(fd, max_bytes)
 
 
 def isatty_safe(stream: TextIO) -> bool:
