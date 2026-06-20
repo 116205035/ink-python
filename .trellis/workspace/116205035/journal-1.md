@@ -123,3 +123,45 @@ Phase 2 complete: 8 PRs adding 3 externals (Spinner/Link/Divider), Context syste
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: PyInk Phase 3: content rendering + 8 bug fixes
+
+**Date**: 2026-06-20
+**Task**: PyInk Phase 3: content rendering + 8 bug fixes
+**Branch**: `main`
+
+### Summary
+
+Phase 3 complete: 6 PRs adding 4 content-rendering externals (StreamingText/HighlightedCode/Markdown/StructuredDiff) + 5 examples + README + integration tests. Optional-dependencies pattern established (pyink[highlight] / pyink[markdown] / pyink[all]). Post-PR user testing surfaced 8 bugs, all fixed with regression tests: (1) ANSI SGR leak into shell after exit, (2/3) high CPU + invisible streaming, (4) border scramble as visual artifact of 2/3, (5) reference impl consultation (ink/Textual/Claude Code), (6) _FpsThrottle idle busy-spin (4.6M iter/sec, 99.98% CPU — the real root cause that LRU cache missed), (7) reactive Markdown rendered snapshot at viewport width while layout constrained Text leaf to content width, (8) box border truncation on vertical overflow. Key infra additions: _text_width_context ContextVar for layout-aware text rendering, LRU caches for markdown render + pygments tokenize, FpsThrottle rewrite to indefinite-wait when idle. Final state: 885 passed + 22 xfailed, mypy strict + ruff green across 113 source files. Phase 1-3 covers reactive core + 13 components (6 built-in + 7 externals) + 8 hooks + Context system + measure_element API + 28 examples.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dd8eb7e` | (see git log) |
+| `86a82d8` | (see git log) |
+| `d6334fd` | (see git log) |
+| `a5e3e1f` | (see git log) |
+| `edf5799` | (see git log) |
+| `5159eb9` | (see git log) |
+| `59a83bc` | (see git log) |
+| `42e73f0` | (see git log) |
+| `17e7a1d` | (see git log) |
+| `9638247` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
