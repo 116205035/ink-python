@@ -28,10 +28,21 @@ __all__ = [
 #: Supported wrap modes for :func:`wrap_text`.
 WrapMode = Literal["wrap", "hard", "truncate", "truncate-start", "truncate-middle", "truncate-end"]
 
-# Matches CSI-style escape sequences — covers SGR (colours/styles) and a
-# handful of related control sequences that may appear in ``str`` text
-# leaves produced by future PR4 helpers. ``\x1b`` is the ESC character.
-_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+# Matches ANSI escape sequences that may appear in ``str`` text leaves.
+# Two flavours are covered:
+#
+# * CSI — ``\x1b[...`` sequences (SGR colours/styles and related controls).
+# * OSC — ``\x1b]...ST`` operating-system commands, terminated by either
+#   BEL (``\x07``) or ST (``\x1b\\``). OSC 8 hyperlinks (emitted by
+#   :func:`pyink.externals.Link`) are the canonical in-tree user; without
+#   this branch the measure layer would count the OSC payload as visible
+#   width and the layout would over-allocate cells.
+#
+# ``\x1b`` is the ESC character.
+_ANSI_RE = re.compile(
+    r"\x1b\[[0-9;?]*[ -/]*[@-~]"      # CSI
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC (BEL- or ST-terminated)
+)
 # Combining / zero-width / control characters stripped by ``wcwidth`` but
 # also useful to detect for the ASCII fallback path.
 _COMBINING_RE = re.compile("[̀-ͯ᪰-᫿᷀-᷿⃐-⃿︠-︯]")
