@@ -27,6 +27,7 @@ from pyink.layout.flex import (
     LayoutNode,
     MeasureMode,
     build_flex_tree,
+    clear_box_refs,
     layout,
     layout_root,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "MeasureMode",
     "WrapMode",
     "build_flex_tree",
+    "clear_box_refs",
     "layout",
     "layout_root",
     "render_layout_to_string",

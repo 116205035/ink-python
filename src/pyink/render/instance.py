@@ -47,7 +47,8 @@ from typing import TYPE_CHECKING, TextIO, cast
 from pyink.core.element import Element
 from pyink.core.reconciler import Reconciler
 from pyink.core.signal import effect
-from pyink.layout import layout, render_layout_to_string
+from pyink.hooks._box_metrics_runtime import bump_layout_epoch
+from pyink.layout import clear_box_refs, layout, render_layout_to_string
 from pyink.render.diff import write_diff
 from pyink.render.terminal import Terminal
 
@@ -281,6 +282,12 @@ class Instance:
             layout(mounted, columns=cols, rows=rows)
         except Exception:  # pragma: no cover
             return
+        # Phase 2 PR7 — bump the layout epoch so any ``use_box_metrics``
+        # consumers downstream refresh their computed value. The Box ref
+        # values were already back-filled inside :func:`layout`; bumping
+        # here keeps the epoch in sync with what the subscriptions
+        # observed.
+        bump_layout_epoch()
         self.throttle.schedule(self._paint_now)
 
     def _paint_now(self) -> None:
@@ -304,6 +311,9 @@ class Instance:
                     new_frame = render_layout_to_string(layout_tree)
                 except Exception:  # pragma: no cover
                     return
+            # Phase 2 PR7 — bump the layout epoch so ``use_box_metrics``
+            # computeds refresh against the just-painted measurements.
+            bump_layout_epoch()
             static_text = "".join(static_chunks)
             self._flush_static_and_frame(prev_frame, new_frame, static_text)
             with self._lock:
@@ -323,6 +333,12 @@ class Instance:
             except Exception:  # pragma: no cover
                 # A broken layout must not blank the screen.
                 return
+            # Phase 2 PR7 — bump after the layout pass so ``use_box_metrics``
+            # computeds refresh against the just-painted measurements. We
+            # bump here (inside the ``else`` branch) so a ``mounted is None``
+            # frame doesn't perturb subscribers; the no-op frame still has
+            # measurements from the previous successful layout.
+            bump_layout_epoch()
         if prev_frame == new_frame and prev_frame:
             return
         if not prev_frame:
@@ -420,6 +436,12 @@ class Instance:
         # for the lifetime of the process.
         self.throttle.stop()
         if self.mounted_tree is not None:
+            # Phase 2 PR7 — clear every Box ``ref`` in the tree *before*
+            # the reconciler tears the instances down so consumers calling
+            # ``measure_element`` / ``use_box_metrics`` after unmount see
+            # ``has_measured=False`` rather than a stale snapshot pointing
+            # at a LayoutNode whose host instance is gone.
+            clear_box_refs(self.mounted_tree)
             self.reconciler.unmount(self.mounted_tree)
             self.mounted_tree = None
 

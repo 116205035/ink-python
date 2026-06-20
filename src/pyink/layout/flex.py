@@ -59,6 +59,7 @@ __all__ = [
     "LayoutNode",
     "MeasureMode",
     "build_flex_tree",
+    "clear_box_refs",
     "layout",
     "layout_root",
 ]
@@ -320,6 +321,15 @@ class FlexNode:
     # Raw element ``props`` — PR4 reads border / colour / text-style
     # overrides from here when painting.
     props: dict[str, Any] = field(default_factory=dict)
+    # Phase 2 PR7: a ``Ref[LayoutNode] | None`` propagated from the Box
+    # element's ``ref`` prop. ``None`` for nodes without a ref. We attach
+    # it to the FlexNode (rather than re-reading ``props`` downstream) so
+    # the layout pass can clear the ref's value before the next paint and
+    # re-populate it from the freshly built :class:`LayoutNode` — keeping
+    # callers from observing stale measurements. The cleared-then-set
+    # sequence is also what enables ``Instance.unmount`` to detect "the
+    # element is gone" by leaving the ref at ``None``.
+    ref: Any = None
 
 
 @dataclass(slots=True)
@@ -405,6 +415,40 @@ def build_flex_tree(instance: Any) -> FlexNode | None:
             return FlexNode(kind="box", style=FlexStyle(), children=kids2, source=instance)
         return _build_host_node(instance)
     return None
+
+
+def clear_box_refs(instance: Any) -> None:
+    """Recursively clear ``ref.value`` for every Box in ``instance``'s tree.
+
+    Phase 2 PR7 hook used by :meth:`pyink.render.instance.Instance.unmount`
+    so consumers calling :func:`measure_element` / :func:`use_box_metrics`
+    after unmount see ``has_measured=False`` (rather than a stale snapshot
+    pointing at a LayoutNode whose host instance has been torn down).
+
+    Walks the same host-instance shape the reconciler produces — a tree of
+    :class:`pyink.core.component.HostInstance` / ``ComponentInstance`` with
+    a ``children`` list (raw leaves for ``"text"`` hosts). Non-element
+    inputs are a no-op so callers can pass ``None`` defensively.
+    """
+    from pyink.core.component import ComponentInstance, HostInstance
+
+    if instance is None:
+        return
+    if isinstance(instance, ComponentInstance):
+        for child in instance.children:
+            clear_box_refs(child)
+        return
+    if isinstance(instance, HostInstance):
+        # Only Boxes (and other non-text hosts) carry a ``ref`` prop.
+        if instance.element.type != "text":
+            ref = instance.element.props.get("ref")
+            if ref is not None:
+                ref.value = None
+        for child in instance.children:
+            # Text leaves are raw str / callable — skip them.
+            if isinstance(child, (HostInstance, ComponentInstance)):
+                clear_box_refs(child)
+        return
 
 
 def _inline_text_element(element: Any) -> str | None:
@@ -509,11 +553,20 @@ def _build_host_node(instance: Any) -> FlexNode:
     # values (those that *do* affect layout — borderStyle / borderTop /
     # etc. — are resolved inside :meth:`FlexStyle.from_props`).
     resolved_props = _resolve_decoration_props(instance.element.props)
+    # Phase 2 PR7: Box's ``ref`` prop is a measurement handle, not a
+    # style/decoration prop. Pull it out of the props dict before the
+    # renderer (or the layout style parser) sees it — otherwise it would
+    # leak into ``FlexStyle.from_props`` (ignored) and into the resolved
+    # ``node.props`` snapshot that the renderer iterates. The ref is
+    # carried on the FlexNode via the dedicated ``ref`` field so the
+    # post-layout traversal can back-fill ``ref.value``.
+    box_ref = resolved_props.pop("ref", None)
     node = FlexNode(
         kind=element_type,
         style=style,
         source=instance,
         props=resolved_props,
+        ref=box_ref,
     )
     if element_type == "text":
         # Resolve text leaves immediately (callables evaluated once).
@@ -651,6 +704,14 @@ def _to_layout_tree(node: FlexNode, offset_x: int, offset_y: int) -> LayoutNode:
         style=_snapshot_style(node.style),
         props=dict(node.props),
     )
+    # Phase 2 PR7 — back-fill the Box's ``ref`` with the freshly-built
+    # LayoutNode so :func:`measure_element` / :func:`use_box_metrics` see
+    # the post-layout coordinates. The ref was attached to the FlexNode
+    # in :func:`_build_host_node`. We assign unconditionally (even when
+    # the ref already pointed at an older node) because the layout pass
+    # may have re-positioned or re-sized the element on this tick.
+    if node.ref is not None:
+        node.ref.value = out
     for child in node.children:
         out.children.append(
             _to_layout_tree(child, offset_x + node.layout_x, offset_y + node.layout_y)
