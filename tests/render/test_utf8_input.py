@@ -393,3 +393,225 @@ def test_text_input_handles_split_chinese_chunk(
     assert captured["value"] == "你", (
         f'TextInput should hold "你", got {captured["value"]!r}'
     )
+
+
+# ---------------------------------------------------------------------------
+# Bug 9 follow-up: Windows console codepage (locale != UTF-8).
+#
+# On a zh-CN Windows machine the default console input codepage is 936
+# (GBK), so the IME emits GBK bytes for CJK characters. The Terminal's
+# UTF-8 decoder cannot decode those bytes — they surface as ``U+FFFD``
+# replacement chars and the user sees ``??``. The fix is to flip the
+# console input + output codepage to UTF-8 (65001) for the duration of
+# raw mode and restore the original locale codepage on exit.
+#
+# These tests run on any platform — we patch ``_PLATFORM`` and a fake
+# ``ctypes`` surface so the codepage-switch code runs against mocked
+# Win32 calls.
+# ---------------------------------------------------------------------------
+
+
+class _CodepageProbeKernel32:
+    """Records every SetConsoleCP / SetConsoleOutputCP call for assertions."""
+
+    def __init__(self, current_input_cp: int = 936, current_output_cp: int = 936) -> None:
+        self.current_input_cp = current_input_cp
+        self.current_output_cp = current_output_cp
+        self.set_input_cp_calls: list[int] = []
+        self.set_output_cp_calls: list[int] = []
+
+    def GetStdHandle(self, _handle: int) -> int:
+        return 1234
+
+    def GetConsoleMode(self, _handle: int, mode_ref: object) -> int:
+        # Legacy echo + line + processed input flags set.
+        mode_ref.value = 0xE7  # type: ignore[attr-defined]
+        return 1
+
+    def SetConsoleMode(self, _handle: int, _mode: int) -> int:
+        return 1
+
+    def GetConsoleCP(self) -> int:
+        return self.current_input_cp
+
+    def GetConsoleOutputCP(self) -> int:
+        return self.current_output_cp
+
+    def SetConsoleCP(self, cp: int) -> int:
+        self.set_input_cp_calls.append(cp)
+        self.current_input_cp = cp
+        return 1
+
+    def SetConsoleOutputCP(self, cp: int) -> int:
+        self.set_output_cp_calls.append(cp)
+        self.current_output_cp = cp
+        return 1
+
+
+def _install_fake_ctypes(
+    kernel32: _CodepageProbeKernel32, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Install a fake ``ctypes`` module so the Windows code runs anywhere."""
+
+    class _FakeDWORD:
+        def __init__(self, value: int = 0) -> None:
+            self.value = value
+
+    class _FakeCtypes:
+        windll = type("windll", (), {"kernel32": kernel32})()
+
+        @staticmethod
+        def byref(obj: object) -> object:
+            return obj
+
+        class wintypes:  # noqa: N801 - mirrors real module name
+            DWORD = _FakeDWORD
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "ctypes", _FakeCtypes)
+    monkeypatch.setitem(sys.modules, "ctypes.wintypes", _FakeCtypes.wintypes)
+
+
+def test_windows_raw_mode_switches_codepage_to_utf8(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``enter_raw_mode`` on Windows must flip both codepages to 65001.
+
+    This is the regression test for the original Bug 9 follow-up: without
+    this switch a zh-CN user typing ``你`` gets ``??`` because the IME
+    emits GBK bytes that the UTF-8 decoder rejects.
+    """
+    probe = _CodepageProbeKernel32(current_input_cp=936, current_output_cp=936)
+    _install_fake_ctypes(probe, monkeypatch)
+
+    term = Terminal(stdout=_FakeTTY(), stdin=_FakeTTY())
+    term._enter_raw_mode_windows()
+
+    assert probe.set_input_cp_calls == [65001], (
+        f"input CP must be flipped to UTF-8 (65001), got {probe.set_input_cp_calls!r}"
+    )
+    assert probe.set_output_cp_calls == [65001], (
+        f"output CP must be flipped to UTF-8 (65001), got {probe.set_output_cp_calls!r}"
+    )
+    # Original codepage must be captured for restore on exit.
+    assert term._prev_console_input_cp == 936
+    assert term._prev_console_output_cp == 936
+
+
+def test_windows_raw_mode_exit_restores_locale_codepage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``exit_raw_mode`` must restore the original codepage captured at entry."""
+    probe = _CodepageProbeKernel32(current_input_cp=936, current_output_cp=936)
+    _install_fake_ctypes(probe, monkeypatch)
+
+    term = Terminal(stdout=_FakeTTY(), stdin=_FakeTTY())
+    term._enter_raw_mode_windows()
+    assert probe.current_input_cp == 65001
+    assert probe.current_output_cp == 65001
+
+    term._exit_raw_mode_windows()
+    assert probe.current_input_cp == 936, (
+        "exit must restore the locale input codepage (936) captured at entry"
+    )
+    assert probe.current_output_cp == 936, (
+        "exit must restore the locale output codepage (936) captured at entry"
+    )
+    # Restore must be idempotent — a second exit must not flip the CP again.
+    term._prev_console_input_cp = None
+    term._prev_console_output_cp = None
+    calls_before = (len(probe.set_input_cp_calls), len(probe.set_output_cp_calls))
+    term._exit_raw_mode_windows()
+    calls_after = (len(probe.set_input_cp_calls), len(probe.set_output_cp_calls))
+    assert calls_before == calls_after, (
+        "exit_raw_mode with no saved codepage must not call SetConsoleCP"
+    )
+
+
+def test_windows_raw_mode_idempotent_codepage_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Re-entering raw mode doesn't double-flip the codepage state.
+
+    ``enter_raw_mode`` itself is idempotent at the Terminal level, but the
+    Windows helper can be called directly — every entry must record a
+    fresh capture so the matching exit restores the right value.
+    """
+    probe = _CodepageProbeKernel32(current_input_cp=936, current_output_cp=936)
+    _install_fake_ctypes(probe, monkeypatch)
+
+    term = Terminal(stdout=_FakeTTY(), stdin=_FakeTTY())
+    term._enter_raw_mode_windows()
+    # After entry the codepage is UTF-8 — a second entry should capture
+    # 65001 as the new "previous" state so the eventual restore lands on
+    # 65001 instead of the original 936.
+    term._enter_raw_mode_windows()
+    assert term._prev_console_input_cp == 65001
+    assert term._prev_console_output_cp == 65001
+
+
+def test_windows_codepage_switched_on_raw_mode_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: raw-mode entry on the GBK-locale Windows path invokes SetConsoleCP.
+
+    Drives a fake Windows path with a GBK-input IME: ``_read_stdin_chunk``
+    yields GBK bytes for ``你`` (``b"\\xc4\\xe3"``). The assertion only
+    checks that ``SetConsoleCP(65001)`` was invoked at entry — after the
+    mock the bytes still arrive as GBK (we can't mock the IME encoding
+    itself), but the codepage-switch contract is what we're verifying.
+    """
+    probe = _CodepageProbeKernel32(current_input_cp=936, current_output_cp=936)
+    _install_fake_ctypes(probe, monkeypatch)
+    monkeypatch.setattr(_term_mod, "_PLATFORM", "windows")
+
+    received: list[Key] = []
+
+    # GBK bytes for "你" — what the IME would emit under codepage 936.
+    gbk_ni = "你".encode("gbk")
+    chunks = iter([gbk_ni])
+
+    def fake_read(fd: int, n: int) -> bytes:
+        try:
+            return next(chunks)
+        except StopIteration:
+            time.sleep(0.05)
+            return b""
+
+    monkeypatch.setattr(_term_mod, "_read_stdin_chunk", fake_read)
+    monkeypatch.setattr(_term_mod, "_wait_for_input", lambda fd, timeout: True)
+    # The Windows raw-mode helper now runs against our fake ctypes.
+    # Unix helpers stay as no-ops.
+    monkeypatch.setattr(Terminal, "_enter_raw_mode_unix", lambda self: None)
+    monkeypatch.setattr(Terminal, "_exit_raw_mode_unix", lambda self: None)
+
+    term = Terminal(stdout=_FakeTTY(), stdin=_FakeTTY())
+    dispose = term.on_key(lambda k: received.append(k))
+    term.enable_input()
+    try:
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and not received:
+            time.sleep(0.02)
+    finally:
+        dispose()
+
+    # The codepage-switch contract is the regression target. After entry
+    # the kernel32 probe must have seen both UTF-8 switch calls.
+    assert 65001 in probe.set_input_cp_calls, (
+        f"input CP not switched to UTF-8 at raw-mode entry; "
+        f"calls={probe.set_input_cp_calls!r}"
+    )
+    assert 65001 in probe.set_output_cp_calls, (
+        f"output CP not switched to UTF-8 at raw-mode entry; "
+        f"calls={probe.set_output_cp_calls!r}"
+    )
+    # After dispose the locale codepage must be restored.
+    assert probe.current_input_cp == 936, (
+        f"locale input CP (936) not restored on exit; "
+        f"current={probe.current_input_cp}"
+    )
+    assert probe.current_output_cp == 936, (
+        f"locale output CP (936) not restored on exit; "
+        f"current={probe.current_output_cp}"
+    )

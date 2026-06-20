@@ -40,6 +40,19 @@ UTF-8 input (Bug 9):
   separate ``Key`` events whose ``input`` was one junk byte each, which
   TextInput rendered as mojibake. The decoder is per-Terminal and lives
   for the lifetime of raw mode; it is reset whenever raw mode re-arms.
+
+Windows console codepage (Bug 9 follow-up):
+
+* The incremental UTF-8 decoder above assumes the bytes the IME hands to
+  stdin are UTF-8. On a non-UTF-8 Windows locale (e.g. zh-CN with
+  codepage 936 / GBK) the IME emits GBK bytes for CJK characters; the
+  UTF-8 decoder then converts every illegal lead byte into ``U+FFFD``,
+  so the user sees ``??`` for each CJK keystroke. The fix is to flip
+  the console input / output codepage to 65001 (UTF-8) for the duration
+  of raw mode and restore the user's locale codepage on exit. This only
+  affects the console handle attached to this process — it doesn't
+  touch the system locale, and it's a no-op on Unix (POSIX locales are
+  already UTF-8 in practice) and when stdout is redirected to a file.
 """
 
 from __future__ import annotations
@@ -122,6 +135,8 @@ class Terminal:
         "_bracketed_paste_active",
         "_prev_termios",
         "_prev_console_mode",
+        "_prev_console_input_cp",
+        "_prev_console_output_cp",
         "_key_callbacks",
         "_key_thread",
         "_key_stop",
@@ -156,6 +171,11 @@ class Terminal:
         self._bracketed_paste_active: bool = False
         self._prev_termios: object | None = None
         self._prev_console_mode: int | None = None
+        # Saved Windows console codepages (input / output) captured at
+        # raw-mode entry so we can restore them on exit. ``None`` when
+        # we haven't captured them yet — see ``_enter_raw_mode_windows``.
+        self._prev_console_input_cp: int | None = None
+        self._prev_console_output_cp: int | None = None
         # Key-event subscription state.
         self._key_callbacks: list[Callable[[Key], None]] = []
         self._key_thread: threading.Thread | None = None
@@ -505,7 +525,7 @@ class Terminal:
     def _enter_raw_mode_windows(self) -> None:
         """Flip stdin into raw mode on Windows.
 
-        Two things must happen for keystrokes to arrive byte-by-byte:
+        Three things must happen for keystrokes to arrive byte-by-byte:
 
         1. Disable ``ENABLE_ECHO_INPUT`` / ``ENABLE_LINE_INPUT`` /
            ``ENABLE_PROCESSED_INPUT`` so input is unbuffered, not echoed,
@@ -517,6 +537,12 @@ class Terminal:
            handing them to the reader. Without this flag the console
            emits raw ``INPUT_RECORD`` structs that ``os.read`` cannot
            decode into VT sequences — arrow keys / Tab simply vanish.
+        3. Flip the console input + output codepage to UTF-8 (65001) so
+           the IME emits UTF-8 bytes for CJK characters instead of the
+           locale's default codepage (e.g. 936 / GBK on zh-CN). The
+           UTF-8 incremental decoder assumes UTF-8 bytes; without this
+           switch every CJK keystroke surfaced as ``U+FFFD`` replacement
+           chars (Bug 9 follow-up).
 
         ``ENABLE_VIRTUAL_TERMINAL_INPUT`` is mutually exclusive with the
         legacy echo/line flags, so we set it on top of the cleared bits.
@@ -526,15 +552,35 @@ class Terminal:
             from ctypes import wintypes
         except ImportError:  # pragma: no cover
             return
+        kernel32 = ctypes.windll.kernel32
         try:
-            handle = ctypes.windll.kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+            handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
         except OSError:  # pragma: no cover
             return
-        kernel32 = ctypes.windll.kernel32
         mode = wintypes.DWORD()
         if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
             return
         self._prev_console_mode = mode.value
+        # Capture the console codepages so we can restore them on exit.
+        # Done before any codepage mutation so the restore is accurate
+        # even if the surrounding call fails partway through.
+        try:
+            self._prev_console_input_cp = kernel32.GetConsoleCP()
+            self._prev_console_output_cp = kernel32.GetConsoleOutputCP()
+        except OSError:  # pragma: no cover
+            self._prev_console_input_cp = None
+            self._prev_console_output_cp = None
+        # Flip the console codepage to UTF-8 so the IME emits UTF-8
+        # bytes. No-op if the codepage is already 65001; safe to call
+        # repeatedly (Windows returns 0 on failure but the console
+        # keeps functioning on its previous codepage).
+        try:
+            kernel32.SetConsoleCP(65001)
+            kernel32.SetConsoleOutputCP(65001)
+        except OSError:  # pragma: no cover
+            # Codepage switch failed — keep going; the UTF-8 decoder
+            # will still do its best with whatever bytes arrive.
+            pass
         ENABLE_ECHO_INPUT = 0x0004
         ENABLE_LINE_INPUT = 0x0002
         ENABLE_PROCESSED_INPUT = 0x0001
@@ -546,20 +592,34 @@ class Terminal:
         kernel32.SetConsoleMode(handle, new_mode)
 
     def _exit_raw_mode_windows(self) -> None:
-        """Restore the original Windows console mode (idempotent)."""
+        """Restore the original Windows console mode + codepage (idempotent)."""
         try:
             import ctypes
         except ImportError:  # pragma: no cover
             return
+        kernel32 = ctypes.windll.kernel32
         prev = self._prev_console_mode
         self._prev_console_mode = None
-        if prev is None:
-            return
-        try:
-            handle = ctypes.windll.kernel32.GetStdHandle(-10)
-        except OSError:  # pragma: no cover
-            return
-        ctypes.windll.kernel32.SetConsoleMode(handle, prev)
+        if prev is not None:
+            try:
+                handle = kernel32.GetStdHandle(-10)
+            except OSError:  # pragma: no cover
+                handle = None
+            if handle is not None:
+                kernel32.SetConsoleMode(handle, prev)
+        # Restore the codepage captured at entry. Idempotent: clearing
+        # the saved slot first means a second ``exit_raw_mode`` call
+        # finds ``None`` and skips the SetConsoleCP work.
+        prev_cp_in = self._prev_console_input_cp
+        prev_cp_out = self._prev_console_output_cp
+        self._prev_console_input_cp = None
+        self._prev_console_output_cp = None
+        if prev_cp_in is not None:
+            with suppress(OSError):  # pragma: no cover
+                kernel32.SetConsoleCP(prev_cp_in)
+        if prev_cp_out is not None:
+            with suppress(OSError):  # pragma: no cover
+                kernel32.SetConsoleOutputCP(prev_cp_out)
 
     # ------------------------------------------------------------------
     # Keyboard input

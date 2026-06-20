@@ -306,6 +306,20 @@ def test_windows_raw_mode_enables_virtual_terminal_input(
             captured["new_mode"] = mode
             return 1
 
+        def GetConsoleCP(self) -> int:
+            return 936
+
+        def GetConsoleOutputCP(self) -> int:
+            return 936
+
+        def SetConsoleCP(self, cp: int) -> int:
+            captured["set_input_cp"] = cp
+            return 1
+
+        def SetConsoleOutputCP(self, cp: int) -> int:
+            captured["set_output_cp"] = cp
+            return 1
+
     # Build a fake ``ctypes`` module surface.
     class _FakeCtypes:
         windll = type("windll", (), {"kernel32": _FakeKernel32()})()
@@ -340,12 +354,18 @@ def test_windows_raw_mode_enables_virtual_terminal_input(
     assert not (new_mode & ENABLE_PROCESSED_INPUT), (
         "processed input must be disabled so Ctrl+C arrives as 0x03"
     )
+    # Bug 9 follow-up: input + output codepages must be switched to UTF-8.
+    assert captured.get("set_input_cp") == 65001
+    assert captured.get("set_output_cp") == 65001
+    # The original codepage must be captured for later restore.
+    assert tty_terminal._prev_console_input_cp == 936
+    assert tty_terminal._prev_console_output_cp == 936
 
 
 def test_windows_raw_mode_exit_restores_previous_mode(
     tty_terminal: Terminal, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``exit_raw_mode`` restores the previously-saved console mode."""
+    """``exit_raw_mode`` restores the previously-saved console mode + codepage."""
     restored: dict[str, int] = {}
 
     class _FakeKernel32:
@@ -354,6 +374,14 @@ def test_windows_raw_mode_exit_restores_previous_mode(
 
         def SetConsoleMode(self, _h: int, mode: int) -> int:
             restored["mode"] = mode
+            return 1
+
+        def SetConsoleCP(self, cp: int) -> int:
+            restored["input_cp"] = cp
+            return 1
+
+        def SetConsoleOutputCP(self, cp: int) -> int:
+            restored["output_cp"] = cp
             return 1
 
     class _FakeCtypes:
@@ -365,9 +393,16 @@ def test_windows_raw_mode_exit_restores_previous_mode(
     monkeypatch.setitem(sys.modules, "ctypes.wintypes", type("wintypes", (), {}))
 
     tty_terminal._prev_console_mode = 0x1A7
+    tty_terminal._prev_console_input_cp = 936
+    tty_terminal._prev_console_output_cp = 936
     tty_terminal._exit_raw_mode_windows()
     assert restored["mode"] == 0x1A7
+    # Bug 9 follow-up: original codepages must be restored on exit.
+    assert restored["input_cp"] == 936
+    assert restored["output_cp"] == 936
     assert tty_terminal._prev_console_mode is None
+    assert tty_terminal._prev_console_input_cp is None
+    assert tty_terminal._prev_console_output_cp is None
 
 
 def test_windows_read_drains_multi_byte_escape_sequence(

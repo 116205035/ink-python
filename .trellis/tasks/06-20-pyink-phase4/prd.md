@@ -316,3 +316,70 @@ byte 泄漏到新 session。
   Single-line input 里输入 "你好" —— 应在 input 框中正确显示 "你好"
   而不是 6 个乱码字符。再输入 emoji 🎉 也应正确显示。
 
+### Bug 9 follow-up — Windows 中文 locale 仍显示 `??`（codepage bug）
+
+**Symptom**: Bug 9 fix shipped, but a user on Windows zh-CN locale
+typing "你" into `TextInput` still saw `??` (2 × `U+FFFD`). Re-running
+the diagnostic confirmed the cause:
+
+```
+sys.stdin.encoding   : 'gbk'
+preferred encoding   : 'cp936'
+GetConsoleCP()       : 936          # input codepage = GBK, not UTF-8
+GetConsoleOutputCP() : 936
+```
+
+**Root cause**: Bug 9 only fixed the *UTF-8 multi-byte split* problem
+at the decoder level — it assumed the bytes the IME delivers to stdin
+are UTF-8. On a non-UTF-8 Windows locale (zh-CN defaults to codepage
+936 / GBK), the IME encodes "你" as the 2 GBK bytes `C4 E3` and hands
+those to the console input buffer. PyInk's UTF-8 incremental decoder
+sees `C4 E3` as an illegal UTF-8 sequence → `errors="replace"` emits
+2 × `U+FFFD` → the user sees `??`. The UTF-8 decoder wasn't wrong; the
+*bytes themselves were not UTF-8*.
+
+**Fix**: Flip the console input + output codepage to UTF-8 (65001) for
+the duration of raw mode and restore the user's locale codepage on
+exit. The IME looks at the console input codepage to decide what byte
+encoding to emit, so once the codepage is 65001 it emits UTF-8 bytes
+and the existing incremental decoder Just Works.
+
+* `src/pyink/render/terminal.py`:
+  * New slots `_prev_console_input_cp` / `_prev_console_output_cp` to
+    hold the locale codepages captured at entry.
+  * `_enter_raw_mode_windows` now calls `GetConsoleCP` /
+    `GetConsoleOutputCP` *before* any codepage mutation, then
+    `SetConsoleCP(65001)` + `SetConsoleOutputCP(65001)`. Codepage
+    capture happens before mutation so the restore is accurate even
+    if the surrounding SetConsoleMode call fails.
+  * `_exit_raw_mode_windows` restores both codepages from the saved
+    slots, clears the slots (idempotent), and uses
+    `contextlib.suppress(OSError)` to tolerate failures during
+    interpreter teardown.
+* Unix path unchanged (POSIX locales are UTF-8 in practice).
+* The switch only affects this process's console handle — it doesn't
+  touch the system locale and is a no-op when stdout is redirected to
+  a file (not a TUI scenario).
+
+**Files**:
+
+* `src/pyink/render/terminal.py`: codepage save / switch / restore
+  in the Windows raw-mode helpers + module docstring update.
+* `tests/render/test_raw_mode.py`: extended the two existing Windows
+  raw-mode tests to assert `SetConsoleCP(65001)` /
+  `SetConsoleOutputCP(65001)` are called at entry and the locale
+  codepage (936) is restored at exit.
+* `tests/render/test_utf8_input.py`: 4 new regression tests covering
+  entry-flips-CP, exit-restores-CP, idempotency of both, and an
+  end-to-end mock that drives GBK bytes through the reader and
+  verifies the codepage-switch contract.
+
+**Verification**:
+
+* 1097 tests pass (1093 baseline + 4 new codepage regressions).
+* mypy strict + ruff 全绿.
+* User verification: on the zh-CN Windows machine, re-run
+  `python examples/text-input/text_input_demo.py` and type "你好" in
+  the Single-line input — should now display "你好" correctly (no
+  more `??`). Typing emoji 🎉 should also work.
+
