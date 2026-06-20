@@ -165,3 +165,42 @@ Phase 3 complete: 6 PRs adding 4 content-rendering externals (StreamingText/High
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: PyInk Phase 4: input components + UTF-8/CJK bug fixes
+
+**Date**: 2026-06-21
+**Task**: PyInk Phase 4: input components + UTF-8/CJK bug fixes
+**Branch**: `main`
+
+### Summary
+
+Phase 4 complete: 5 PRs adding 3 input externals (TextInput with single+multi-line+selection+paste+cursor styles, SelectInput single+multi, ConfirmInput single-key+require_enter) + 5 examples + README + integration tests. Cross-layer enhancement: Terminal bracketed paste mode (DECSET 2004) + Key gains paste_start/paste_end/paste fields + parser detects paste markers. Post-PR user testing surfaced 2 bugs: (9) Chinese/emoji input showed mojibake — root cause was per-chunk UTF-8 decode in terminal pipeline (kernel splits multi-byte sequences across chunks); fixed via incremental UTF-8 decoder (codecs.getincrementaldecoder). (9 follow-up) Chinese still broken on Windows zh-CN — root cause was Windows console default codepage 936 (GBK) makes IME emit GBK bytes, not UTF-8; fixed via SetConsoleCP(65001) on enter_raw_mode + restore on exit. Final state: 1097 passed + 22 xfailed, mypy strict + ruff green across 125 source files. Phase 1-4 covers reactive core + 13 components (6 built-in + 10 externals including 3 input) + 8 hooks + Context + measure + bracketed paste + UTF-8/CJK input + 33 examples.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dbbc31d` | (see git log) |
+| `bcdc021` | (see git log) |
+| `a46509e` | (see git log) |
+| `77a7389` | (see git log) |
+| `408a6f5` | (see git log) |
+| `3878651` | (see git log) |
+| `087d362` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
