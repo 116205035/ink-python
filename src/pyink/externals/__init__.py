@@ -6,6 +6,7 @@ externals carry heavier dependencies / non-essential surface area and
 stay out of the default namespace).
 """
 
+from pyink.externals.diff import StructuredDiff
 from pyink.externals.divider import Divider
 from pyink.externals.highlighted_code import DEFAULT_THEME, HighlightedCode
 from pyink.externals.link import Link
@@ -23,4 +24,5 @@ __all__ = [
     "SPINNERS",
     "Spinner",
     "StreamingText",
+    "StructuredDiff",
 ]
