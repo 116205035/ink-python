@@ -67,6 +67,13 @@ _ENTER_ALT = "\x1b[?1049h"  # swap to alternate screen buffer
 _EXIT_ALT = "\x1b[?1049l"  # restore main screen buffer
 _HIDE_CURSOR = "\x1b[?25l"
 _SHOW_CURSOR = "\x1b[?25h"
+#: DECSET 2004 — enable bracketed paste mode so the terminal wraps paste
+#: payloads in ``\\x1b[200~ ... \\x1b[201~``. The Terminal raw-mode entry
+#: emits this once per session and the matching DECRST on exit. Terminals
+#: that do not implement the mode simply ignore the escape, so the
+#: fallback (single-char events) keeps working.
+_ENTER_BRACKETED_PASTE = "\x1b[?2004h"
+_EXIT_BRACKETED_PASTE = "\x1b[?2004l"
 
 
 class Terminal:
@@ -98,12 +105,14 @@ class Terminal:
         "_prev_sigwinch_handler",
         "_alt_active",
         "_raw_active",
+        "_bracketed_paste_active",
         "_prev_termios",
         "_prev_console_mode",
         "_key_callbacks",
         "_key_thread",
         "_key_stop",
         "_key_parser",
+        "_paste_buffer",
         "_raw_lock",
         "_lock",
     )
@@ -127,6 +136,9 @@ class Terminal:
         self._alt_active: bool = False
         # Raw-mode state.
         self._raw_active: bool = False
+        # Bracketed-paste mode is only armed while raw mode is on; this
+        # flag lets us emit the matching DECRST once on exit.
+        self._bracketed_paste_active: bool = False
         self._prev_termios: object | None = None
         self._prev_console_mode: int | None = None
         # Key-event subscription state.
@@ -134,6 +146,11 @@ class Terminal:
         self._key_thread: threading.Thread | None = None
         self._key_stop: threading.Event | None = None
         self._key_parser: KeyParser = KeyParser()
+        # Buffer for the current bracketed-paste payload (``None`` when
+        # not inside a paste). Built up by the key loop as in-paste
+        # single-char events arrive, then flushed as one ``Key(paste=…)``
+        # when the closing marker is seen.
+        self._paste_buffer: str | None = None
         self._raw_lock = threading.RLock()
         self._lock = threading.RLock()
 
@@ -345,6 +362,14 @@ class Terminal:
         Idempotent. On Unix saves the original ``termios`` state; on
         Windows saves the original console mode. :meth:`exit_raw_mode`
         restores it. No-op when raw mode is not supported (non-TTY).
+
+        As a side effect this also asks the terminal to enter *bracketed
+        paste mode* (DECSET 2004) so subsequent paste events arrive
+        wrapped in ``\\x1b[200~ ... \\x1b[201~`` markers — the key loop
+        then delivers the payload as a single :class:`Key` with
+        ``paste`` populated. Terminals that don't implement the mode
+        silently ignore the escape, so single-char events keep working
+        as the fallback.
         """
         with self._raw_lock:
             if self._raw_active:
@@ -356,12 +381,23 @@ class Terminal:
             else:
                 self._enter_raw_mode_windows()
             self._raw_active = True
+            # Enable bracketed paste only when writing to a real TTY —
+            # otherwise we'd spray escapes into captured stdout during
+            # tests. The guard matches the one used for alternate-screen.
+            if self._is_real_tty():
+                self.write(_ENTER_BRACKETED_PASTE)
+                self.flush()
+                self._bracketed_paste_active = True
 
     def exit_raw_mode(self) -> None:
         """Restore the original stdin configuration. Idempotent."""
         with self._raw_lock:
             if not self._raw_active:
                 return
+            if self._bracketed_paste_active:
+                self.write(_EXIT_BRACKETED_PASTE)
+                self.flush()
+                self._bracketed_paste_active = False
             if _PLATFORM == "unix":
                 self._exit_raw_mode_unix()
             else:
@@ -650,10 +686,7 @@ class Terminal:
             with self._raw_lock:
                 sequences = self._key_parser.feed(data)
                 callbacks = list(self._key_callbacks)
-            for seq in sequences:
-                key = parse_key(seq)
-                for cb in callbacks:
-                    _safe_invoke_key(cb, key)
+            self._dispatch_sequences(sequences, callbacks)
             # If we're holding a pending ESC and nothing else arrives
             # soon, flush it as a lone Escape press.
             if self._key_parser.has_pending_escape and not _wait_for_input(
@@ -666,6 +699,53 @@ class Terminal:
                         callbacks = list(self._key_callbacks)
                     for cb in callbacks:
                         _safe_invoke_key(cb, key)
+
+    def _dispatch_sequences(
+        self,
+        sequences: list[str],
+        callbacks: list[Callable[[Key], None]],
+    ) -> None:
+        """Push parsed sequences through the paste-buffering dispatcher.
+
+        Bracketed paste handling: when a ``paste_start`` marker is seen,
+        all subsequent single-char events are accumulated into
+        :attr:`_paste_buffer` until the matching ``paste_end`` marker.
+        The accumulated payload is then delivered as one synthetic
+        :class:`Key` with ``paste`` populated, so handlers see the whole
+        paste as a single edit (one ``on_change`` instead of N).
+        Markers themselves are never forwarded to handlers. Non-paste
+        sequences pass straight through.
+
+        ``callbacks`` is the snapshot taken at the top of the loop; we
+        reuse it for every event the dispatcher emits so unsubscribe
+        mid-dispatch is safe.
+        """
+        for seq in sequences:
+            key = parse_key(seq)
+            if key.paste_end:
+                # Close the active paste. If we somehow see a closing
+                # marker without an opening one, just ignore it.
+                payload = self._paste_buffer
+                self._paste_buffer = None
+                if payload is not None:
+                    paste_key = Key(input="", paste=payload)
+                    for cb in callbacks:
+                        _safe_invoke_key(cb, paste_key)
+                continue
+            if self._paste_buffer is not None:
+                # Inside a paste — accumulate the character payload of
+                # every key. Marker / arrow / function keys inside a
+                # paste are rare (the terminal strips paste markers
+                # before sending); to keep the payload a plain string
+                # we ignore keys without ``input`` text.
+                if key.input:
+                    self._paste_buffer += key.input
+                continue
+            if key.paste_start:
+                self._paste_buffer = ""
+                continue
+            for cb in callbacks:
+                _safe_invoke_key(cb, key)
 
     @staticmethod
     def _compute_wait(deadline: float | None) -> float | None:

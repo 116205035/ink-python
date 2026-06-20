@@ -28,7 +28,7 @@ import pytest
 from pyink import Box, Text, render
 from pyink.core.element import Element
 from pyink.externals import TextInput
-from pyink.externals.text_input import _TextInputImpl
+from pyink.externals.text_input import _TextInputImpl, cursor_column, cursor_line
 from pyink.render import terminal as _term_mod
 from pyink.render.instance import Instance
 from pyink.render.terminal import Terminal
@@ -893,3 +893,710 @@ def test_integration_ctrl_u_then_retype(
         and "abc" not in _visible(_frame(inst))
     )
     inst.unmount()
+
+
+# ===========================================================================
+# PR2 — multi-line, selection, paste
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Public helpers — cursor_line / cursor_column
+# ---------------------------------------------------------------------------
+
+
+def test_cursor_line_counts_preceding_newlines() -> None:
+    assert cursor_line("abc", 0) == 0
+    assert cursor_line("abc\ndef", 3) == 0
+    assert cursor_line("abc\ndef", 4) == 1
+    assert cursor_line("abc\ndef\nghi", 9) == 2
+
+
+def test_cursor_column_resets_after_newline() -> None:
+    assert cursor_column("abc", 0) == 0
+    assert cursor_column("abc", 3) == 3
+    assert cursor_column("abc\ndef", 4) == 0
+    assert cursor_column("abc\ndef", 7) == 3
+
+
+def test_cursor_line_clamps_past_end() -> None:
+    assert cursor_line("ab", 99) == 0
+    assert cursor_line("ab\ncd", 99) == 1
+
+
+def test_cursor_column_clamps_negative() -> None:
+    assert cursor_column("abc", -5) == 0
+
+
+# ---------------------------------------------------------------------------
+# multiline=True — Enter inserts newline
+# ---------------------------------------------------------------------------
+
+
+def test_multiline_enter_inserts_newline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """In multiline mode Enter inserts ``\\n`` instead of submitting."""
+    submitted: list[str] = []
+    changes: list[str] = []
+    feed: list[bytes] = [b"a", b"b", b"\r", b"c"]
+    inst, _ = _mount(
+        TextInput(
+            multiline=True,
+            on_submit=submitted.append,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "ab\nc"))
+    inst.unmount()
+    # on_submit must NOT fire in multiline mode.
+    assert submitted == []
+
+
+def test_singleline_enter_still_submits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PR1 behaviour is preserved when ``multiline=False`` (default)."""
+    submitted: list[str] = []
+    feed: list[bytes] = [b"\r"]
+    inst, _ = _mount(
+        TextInput(initial_value="value", on_submit=submitted.append),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: len(submitted) == 1)
+    inst.unmount()
+    assert submitted == ["value"]
+
+
+def test_multiline_renders_each_line_on_its_own_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multi-line value splits into multiple Text rows inside the Box."""
+    inst, _ = _mount(
+        TextInput(initial_value="ab\ncd", multiline=True),
+        monkeypatch=monkeypatch,
+        columns=20,
+        rows=6,
+    )
+    # Both rows should be visible, and they sit on different lines.
+    assert _wait_for(
+        lambda: "ab" in _visible(_frame(inst))
+        and "cd" in _visible(_frame(inst))
+    )
+    # More than one newline in the raw frame indicates multi-row layout.
+    assert _wait_for(lambda: _frame(inst).count("\n") >= 2)
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# ArrowUp / ArrowDown — cross-line navigation
+# ---------------------------------------------------------------------------
+
+
+def test_arrow_down_moves_to_next_line_same_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Down arrow on line 0 col 1 → line 1 col 1.
+
+    Initial value "abc\\ndef", cursor at end (offset 7, after 'f'). Up
+    moves to line 0 col 3 (end of "ab"). Home moves to line 0 col 0.
+    Right moves to line 0 col 1 (offset 1). Down → offset 5 (line 1 col
+    1, between 'd' and 'e'). Type 'X' inserts at offset 5 →
+    "abc\\ndXef".
+    """
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[A",  # Up    → line 0 col 3
+        b"\x1b[H",  # Home  → line 0 col 0 (offset 0)
+        b"\x1b[C",  # Right → line 0 col 1 (offset 1)
+        b"\x1b[B",  # Down  → offset 5 (line 1 col 1, between 'd' and 'e')
+        b"X",
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abc\ndef",
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "abc\ndXef"))
+    inst.unmount()
+
+
+def test_arrow_up_moves_to_previous_line_same_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Up arrow on line 1 col 1 → line 0 col 1.
+
+    Initial value "abc\\ndef", cursor at end (offset 7). Left → offset 6
+    (line 1 col 2). Left → offset 5 (line 1 col 1). Up → offset 1 (line
+    0 col 1, between 'a' and 'b'). Type 'X' inserts at offset 1 →
+    "aXbc\\ndef".
+    """
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[D",  # Left  → line 1 col 2 (between 'e' and 'f')
+        b"\x1b[D",  # Left  → line 1 col 1 (between 'd' and 'e')
+        b"\x1b[A",  # Up    → line 0 col 1 (between 'a' and 'b')
+        b"X",
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abc\ndef",
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "aXbc\ndef"))
+    inst.unmount()
+
+
+def test_arrow_up_on_first_line_moves_to_line_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Up arrow on the first line clamps to that line's start (col 0).
+
+    Initial value "abc\\ndef", cursor at end (offset 7). Up → line 0 col
+    3. Home → line 0 col 0 (offset 0). Right → line 0 col 1 (offset 1).
+    Up — already on line 0, so cursor clamps to line 0 col 0. Type 'X'
+    inserts at offset 0 → "Xabc\\ndef".
+    """
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[A",  # Up    → line 0 col 3
+        b"\x1b[H",  # Home  → offset 0
+        b"\x1b[C",  # Right → offset 1 (col 1 of line 0)
+        b"\x1b[A",  # Up    — first line, so cursor → col 0 (offset 0)
+        b"X",
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abc\ndef",
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "Xabc\ndef"))
+    inst.unmount()
+
+
+def test_arrow_down_on_last_line_moves_to_line_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Down arrow on the last line clamps to that line's end."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[D",   # Left once — line 1 col 2 (between 'e' and 'f')
+        b"\x1b[B",   # Down — last line, so cursor → end of line 1 (after 'f')
+        b"X",        # type → appends at end
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abc\ndef",
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "abc\ndefX"))
+    inst.unmount()
+
+
+def test_arrow_down_to_shorter_line_clamps_to_line_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Down to a line shorter than the current column clamps to its end.
+
+    Initial value "abcde\\nxy" — cursor after 'e' (col 5 of line 0).
+    Down → line 1 col 5, but line 1 has length 2, so clamp to col 2
+    (end of "xy"). Type 'X' → "abcde\\nxyX".
+    """
+    changes: list[str] = []
+    feed: list[bytes] = [b"\x1b[B", b"X"]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcde\nxy",
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "abcde\nxyX"))
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Shift + Arrow / Home / End — selection
+# ---------------------------------------------------------------------------
+
+
+def test_shift_left_extends_selection_backward(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shift+Left extends selection to the left; typing replaces the range."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        # Cursor starts at end of "abcd" (offset 4).
+        b"\x1b[1;2D",  # Shift+Left → selection [3, 4)
+        b"\x1b[1;2D",  # Shift+Left → selection [2, 4)
+        b"X",          # Replace [2, 4) with "X" → "abX"
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "abX"))
+    inst.unmount()
+
+
+def test_shift_right_extends_selection_forward(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shift+Right extends selection to the right; typing replaces it."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[H",       # Home → cursor at 0
+        b"\x1b[1;2C",    # Shift+Right → selection [0, 1)
+        b"\x1b[1;2C",    # Shift+Right → selection [0, 2)
+        b"X",            # Replace [0, 2) with "X" → "Xcd"
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "Xcd"))
+    inst.unmount()
+
+
+def test_shift_home_extends_selection_to_line_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shift+Home extends selection to the start of the current line."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[D",       # Left once — cursor at 3
+        # Shift+Home (xterm: ESC [ 1 ; 2 H)
+        b"\x1b[1;2H",
+        b"X",            # Replace [0, 3) with "X" → "Xd"
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "Xd"))
+    inst.unmount()
+
+
+def test_shift_end_extends_selection_to_line_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shift+End extends selection to the end of the current line."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[H",       # Home — cursor at 0
+        b"\x1b[D",       # Left (no-op at 0)
+        # Shift+End (xterm: ESC [ 1 ; 2 F)
+        b"\x1b[1;2F",
+        b"X",            # Replace [0, 4) with "X" → "X"
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "X"))
+    inst.unmount()
+
+
+def test_selection_collapses_after_plain_navigation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plain Right after a Shift+Right collapses the selection.
+
+    Sequence: Home → Shift+Right (selection [0, 1)) → Right (clears
+    selection, cursor moves to offset 2) → type 'X' → inserts at offset 2.
+    """
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[H",       # Home → cursor 0
+        b"\x1b[1;2C",    # Shift+Right → selection [0, 1)
+        b"\x1b[C",       # Right → clears selection, cursor 2
+        b"X",            # Insert at offset 2 → "abXcd"
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "abXcd"))
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Selection rendering — inverse video
+# ---------------------------------------------------------------------------
+
+
+def test_selection_renders_with_inverse_video(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The selected range is wrapped in SGR inverse video (``\\x1b[7m``)."""
+    feed: list[bytes] = [
+        b"\x1b[H",       # Home
+        b"\x1b[1;2C",    # Shift+Right → [0, 1)
+        b"\x1b[1;2C",    # Shift+Right → [0, 2)
+    ]
+    inst, _ = _mount(
+        TextInput(initial_value="abcd"), monkeypatch=monkeypatch, feed=feed
+    )
+    # The first two chars ("ab") must be wrapped in inverse video.
+    assert _wait_for(
+        lambda: f"{ESC}[7mab{ESC}[0m" in _frame(inst)
+        and "cd" in _frame(inst)
+    )
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Backspace / Delete on selection
+# ---------------------------------------------------------------------------
+
+
+def test_backspace_on_selection_deletes_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Backspace with an active selection deletes the whole range."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[H",       # Home
+        b"\x1b[1;2C",    # Shift+Right → [0, 1)
+        b"\x1b[1;2C",    # Shift+Right → [0, 2)
+        b"\x7f",         # Backspace → delete [0, 2)
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "cd"))
+    inst.unmount()
+
+
+def test_delete_on_selection_deletes_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Delete with an active selection also deletes the whole range."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[H",       # Home
+        b"\x1b[1;2C",    # Shift+Right → [0, 1)
+        b"\x1b[1;2C",    # Shift+Right → [0, 2)
+        b"\x1b[3~",      # Delete → delete [0, 2)
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "cd"))
+    inst.unmount()
+
+
+def test_typing_replaces_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A printable key with an active selection replaces the range."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[H",
+        b"\x1b[1;2C",
+        b"\x1b[1;2C",
+        b"XY",  # Both chars collapse into one edit (selection collapses
+                # after the first).
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    # After "X": selection [0,2) replaced → "Xcd", cursor at 1, selection None.
+    # After "Y": insert at 1 → "XYcd".
+    assert _wait_for(lambda: _last_change_is(changes, "XYcd"))
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Alt+Backspace == Ctrl+W
+# ---------------------------------------------------------------------------
+
+
+def test_alt_backspace_deletes_previous_word(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Alt+Backspace behaves like Ctrl+W (backward-kill-word)."""
+    changes: list[str] = []
+    # Alt+Backspace arrives as ESC + DEL → bytes "\x1b\x7f".
+    feed: list[bytes] = [b"\x1b\x7f"]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="foo bar",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "foo "))
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Paste — bracketed paste sequence
+# ---------------------------------------------------------------------------
+
+
+def test_bracketed_paste_inserts_as_single_edit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bracketed paste ``\\x1b[200~ ... \\x1b[201~`` produces one on_change."""
+    changes: list[str] = []
+    feed: list[bytes] = [b"\x1b[200~hello\x1b[201~"]
+    inst, _ = _mount(
+        TextInput(
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "hello"))
+    inst.unmount()
+    # Crucially, only ONE on_change fired (not one per character).
+    assert changes == ["hello"]
+
+
+def test_bracketed_paste_replaces_active_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Paste over an active selection replaces the selected range."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[H",       # Home
+        b"\x1b[1;2C",    # Shift+Right → [0, 1)
+        b"\x1b[1;2C",    # Shift+Right → [0, 2)
+        b"\x1b[200~XY\x1b[201~",  # Paste "XY"
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abcd",
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "XYcd"))
+    inst.unmount()
+
+
+def test_bracketed_paste_in_multiline_keeps_newlines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Multi-line paste in multiline mode preserves newlines verbatim."""
+    changes: list[str] = []
+    feed: list[bytes] = [b"\x1b[200~line1\nline2\x1b[201~"]
+    inst, _ = _mount(
+        TextInput(
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=30,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "line1\nline2"))
+    inst.unmount()
+
+
+def test_bracketed_paste_in_singleline_strips_newlines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Single-line paste collapses newlines to spaces."""
+    changes: list[str] = []
+    feed: list[bytes] = [b"\x1b[200~line1\nline2\x1b[201~"]
+    inst, _ = _mount(
+        TextInput(
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "line1 line2"))
+    inst.unmount()
+
+
+def test_bracketed_paste_respects_max_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A paste that would exceed ``max_length`` is dropped entirely."""
+    changes: list[str] = []
+    feed: list[bytes] = [b"\x1b[200~hello\x1b[201~"]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="abc",
+            max_length=5,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    # Buffer "abc" + paste "hello" → 8 chars > 5 → dropped.
+    time.sleep(0.2)
+    assert changes == []
+    assert "abc" in _visible(_frame(inst))
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Ctrl+K / Ctrl+U — now line-scoped (PR1 was buffer-scoped)
+# ---------------------------------------------------------------------------
+
+
+def test_ctrl_k_kills_to_end_of_current_line_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In multiline mode Ctrl+K kills to end of the *current* line only.
+
+    Initial value "ab\\ncdef"; default cursor sits at end of line 1
+    (offset 7). Up → offset 2 (end of "ab", line 0). Left → offset 1
+    (between 'a' and 'b'). Ctrl+K removes [1, 2) → kills 'b' only.
+    The newline + line 1 are preserved.
+    """
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"\x1b[A",   # Up    → line 0 col 2 (offset 2, end of "ab")
+        b"\x1b[D",   # Left  → offset 1 (between 'a' and 'b')
+        b"\x0b",     # Ctrl+K — kill [1, 2) → removes 'b' only.
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="ab\ncdef",
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "a\ncdef"))
+    inst.unmount()
+
+
+def test_ctrl_u_kills_to_start_of_current_line_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In multiline mode Ctrl+U kills to start of the *current* line only."""
+    changes: list[str] = []
+    # Initial value "ab\\ncdef"; cursor at end of line 1.
+    # Ctrl+U on line 1 kills "cdef" (everything before cursor on line 1).
+    feed: list[bytes] = [b"\x15"]  # Ctrl+U at cursor end → kill to line start.
+    inst, _ = _mount(
+        TextInput(
+            initial_value="ab\ncdef",
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "ab\n"))
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Multiline integration — type + newline + backspace roundtrip
+# ---------------------------------------------------------------------------
+
+
+def test_multiline_type_and_backspace_across_newline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enter creates a newline; Backspace at col 0 of line 1 joins lines."""
+    changes: list[str] = []
+    feed: list[bytes] = [
+        b"a", b"b",
+        b"\r",      # Enter → "ab\n"
+        b"c",       # → "ab\nc"
+        b"\x7f",    # Backspace → "ab\n"
+        b"\x7f",    # Backspace at col 0 line 1 → "ab" (removes newline)
+    ]
+    inst, _ = _mount(
+        TextInput(
+            multiline=True,
+            on_change=changes.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "ab"))
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Props — multiline default
+# ---------------------------------------------------------------------------
+
+
+def test_multiline_default_is_false() -> None:
+    el = TextInput()
+    assert el.props["multiline"] is False
+
+
+def test_multiline_prop_captured() -> None:
+    el = TextInput(multiline=True)
+    assert el.props["multiline"] is True

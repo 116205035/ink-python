@@ -14,6 +14,15 @@ Design notes:
   Ctrl+letter). Arrow / function / modifier-only keys leave it empty
   string — handlers should consult the boolean flags.
 * The dataclass is frozen + slotted so keys are hashable and cheap.
+
+Bracketed paste (PR2):
+
+* ``paste_start`` is set on the marker ``\\x1b[200~`` and ``paste_end``
+  on ``\\x1b[201~``. The :class:`pyink.render.terminal.Terminal` input
+  loop watches these to buffer the in-between characters into a single
+  :class:`Key` with ``paste`` populated. Handlers should treat a key with
+  ``paste`` as a single-shot multi-character insert that fires
+  ``on_change`` exactly once.
 """
 
 from __future__ import annotations
@@ -66,3 +75,21 @@ class Key:
     page_down: bool = False
     home: bool = False
     end: bool = False
+
+    # ------------------------------------------------------------------
+    # Bracketed paste (PR2)
+    # ------------------------------------------------------------------
+
+    #: ``True`` for the CSI ``\\x1b[200~`` sequence that opens a bracketed
+    #: paste. The Terminal buffers subsequent single-char events until the
+    #: matching ``paste_end`` marker, then delivers them as one
+    #: :class:`Key` with ``paste`` populated.
+    paste_start: bool = False
+    #: ``True`` for the CSI ``\\x1b[201~`` sequence that closes a bracketed
+    #: paste. Markers themselves are not delivered to handlers when the
+    #: Terminal is in paste-buffering mode.
+    paste_end: bool = False
+    #: Payload of a delivered paste event. Only populated on the single
+    #: synthetic :class:`Key` the Terminal dispatches after the closing
+    #: marker; empty otherwise. The string may contain newlines.
+    paste: str = ""

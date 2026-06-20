@@ -326,6 +326,15 @@ def parse_key(sequence: str) -> Key:
         # Alt + symbol.
         return Key(input=inner, alt=True)
 
+    # Bracketed paste markers — recognised up-front so they surface as
+    # ``paste_start`` / ``paste_end`` flags rather than falling into the
+    # generic CSI path (which would emit an empty-input Key indistinguishable
+    # from any other unknown CSI sequence).
+    if sequence == "\x1b[200~":
+        return Key(input="", paste_start=True)
+    if sequence == "\x1b[201~":
+        return Key(input="", paste_end=True)
+
     # ESC-prefixed longer sequences (CSI / SS3).
     if sequence[0] == _ESC:
         return _parse_escaped_sequence(sequence)
