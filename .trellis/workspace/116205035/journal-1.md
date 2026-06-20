@@ -82,3 +82,44 @@ Added 6 examples (alternate-screen, transform, computed-batch, nested-layout, an
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: PyInk Phase 2: externals + Context + new hooks + measure
+
+**Date**: 2026-06-20
+**Task**: PyInk Phase 2: externals + Context + new hooks + measure
+**Branch**: `main`
+
+### Summary
+
+Phase 2 complete: 8 PRs adding 3 externals (Spinner/Link/Divider), Context system (create_context/Provider/use_context), 5 new hooks (use_interval/use_focus/use_focus_manager/use_context/use_box_metrics), measure_element API + Box ref prop. Key design decisions: Provider pops at end of own subtree mount (not on unmount) because PyInk components run once at mount — prevents sibling-subtree leakage; Spinner wraps a function component via create_element so hooks run in reconciler context; Link extends measure.py ANSI regex to strip OSC 8 (was CSI-only, caused layout width over-allocation); layout_epoch Signal drives use_box_metrics reactivity (bumped after every layout pass, use_box_metrics subscribes via Computed). 5 new examples (spinner/link/divider/use-focus-real/measure-element) bring total to 18. State-management spec updated to document Context + ref/measure patterns. Final state: 693 passed + 22 xfailed, mypy strict + ruff green across 99 source files.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4e95086` | (see git log) |
+| `357ecfa` | (see git log) |
+| `7c73b7e` | (see git log) |
+| `faadde0` | (see git log) |
+| `a177b15` | (see git log) |
+| `d83c985` | (see git log) |
+| `b18dbdb` | (see git log) |
+| `eb38e58` | (see git log) |
+| `c1cdcb5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
