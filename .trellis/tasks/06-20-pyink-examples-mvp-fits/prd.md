@@ -71,6 +71,56 @@ PyInk MVP 已完成（task `06-19-pyink-mvp` 已归档，516 测试通过）。�
 - 不写 use_focus hook（保留手写 signal 模式）
 - 不删除/修改现有 7 个 examples
 
+## Bug Fixes Prompted by Examples
+
+Examples surfaced two real bugs in the MVP core; both were small fixes
+so they were addressed in this task rather than spinning up separate
+tasks (the "single立项" carve-out above).
+
+### Bug 1: long text overflowed bordered Box in nested-layout
+
+**Root cause**: the flex engine's text-leaf wrap guard
+(``"\n" not in node.text``) suppressed re-wrapping on subsequent
+layout passes. The flex engine re-lays-out children multiple times
+(initial measure, after grow/shrink, after cross-axis stretch), and
+each pass can feed a different ``max_width``. The first pass used
+the outer column's wide estimate, joined the wrapped lines with
+``\n``, and the guard then blocked re-wrapping when the inner
+fixed-width Box later shrunk — letting the long first line poke
+through the side border.
+
+**Fix**: snapshot the unwrapped source text on the ``FlexNode``
+(``original_text``) and re-wrap from source, but only when the
+current constraint is **strictly tighter** than any prior wrap
+(tracked via ``props["_wrapped_width"]``). This monotonically
+tightens the wrap as layout converges and never unwraps. See
+``src/pyink/layout/flex.py`` FlexNode / ``_layout_node`` text-leaf
+branch. Covered by
+``test_long_text_in_flex_grow_box_wraps_to_final_width``.
+
+### Bug 2: alternate-screen exit wiped the user's scrollback
+
+**Root cause**: ``Instance.unmount`` cleared the live frame *after*
+``exit_alternate_screen`` restored the primary buffer. The clear-frame
+diff (cursor-up + line-clear) landed on the user's real scrollback
+and erased content above the cursor. Compounding factor: the bare
+``\\x1b[?1049h`` / ``\\x1b[?1049l`` pair relied on the terminal's
+``1049`` implementation to save+restore the cursor; some terminals
+(notably older conhost) honour the buffer swap but skip the cursor
+save, so the cursor jumped to the top of the screen on exit.
+
+**Fix**:
+
+1. ``Instance.unmount`` now skips ``_clear_frame_for_exit`` when the
+   instance was in alt-screen mode (the alt buffer is disposable;
+   nothing to clear on the primary buffer).
+2. ``Terminal.enter_alternate_screen`` / ``exit_alternate_screen``
+   now bracket the ``1049`` swap with explicit DECSC
+   (``\\x1b 7``) / DECRC (``\\x1b 8``) so the cursor position is
+   saved and restored on every terminal, not just the conformant
+   ones. Covered by ``test_alt_screen_brackets_decsc_decrc_around_buffer_swap``
+   and ``test_alt_screen_unmount_does_not_clear_frame_on_primary_buffer``.
+
 ## Technical Notes
 
 ### 关键 API 用法提示

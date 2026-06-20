@@ -298,6 +298,15 @@ class FlexNode:
     style: FlexStyle
     children: list[FlexNode] = field(default_factory=list)
     text: str | None = None  # for kind == "text"
+    # Original unwrapped source text — preserved verbatim so that
+    # repeated layout passes (the engine re-lays-out children after
+    # grow/shrink distribution) can re-wrap at the *current* resolved
+    # width instead of being locked into the first pass's width. Only
+    # the first wrap mutates ``text`` (joining wrapped lines with
+    # ``\n``), so without this snapshot later passes see the joined
+    # text, hit the ``"\n" in node.text`` guard and skip re-wrapping,
+    # which lets long paragraphs overflow their narrower containers.
+    original_text: str | None = None
     # Cached measurement results (intrinsic content size).
     measured_width: int = 0
     measured_height: int = 0
@@ -513,6 +522,9 @@ def _build_host_node(instance: Any) -> FlexNode:
                 if sub is not None:
                     parts.append(sub)
         node.text = "".join(parts)
+        # Snapshot the unwrapped source so re-layout passes can re-wrap
+        # at the current resolved width (see ``FlexNode.original_text``).
+        node.original_text = node.text
         return node
     # Non-text host: mount child host instances (skip component instances
     # by flattening to their inner host children).
@@ -726,26 +738,41 @@ def _layout_node(
             own_w if own_w >= 0
             else (effective_max_w if effective_max_w != float("inf") else float("inf"))
         )
-        w, h = _measure_text(node, max_w_for_text, float("inf"))
-        node.measured_width = w
-        node.measured_height = h
-        # Reflow the text content at the resolved width so the renderer
-        # receives multi-line content directly. PR4 honours the Text
-        # ``wrap`` prop (``"wrap"`` default, ``"hard"`` /
-        # ``"truncate"`` family for explicit control).
+        # Re-wrap from the **original** source text — but only when the
+        # current ``max_w_for_text`` is *tighter* than any width we've
+        # already wrapped to. The flex engine re-lays-out children
+        # multiple times (initial measure, after grow/shrink, after
+        # cross-axis stretch), and each pass may feed a different
+        # ``max_w_for_text``. Re-wrapping to a wider width on a later
+        # pass would let the joined lines overflow the narrower
+        # container they were sized for, so we track the tightest wrap
+        # seen and only re-wrap when the constraint shrinks further.
+        # The ``original_text`` snapshot is what we re-wrap from so a
+        # previous wrap's joined output never pins the content shape.
+        source_text = node.original_text if node.original_text is not None else node.text
         text_wrap = node.props.get("wrap", "wrap")
-        if (
-            node.text
+        prev_wrapped_w = node.props.get("_wrapped_width")
+        should_wrap = (
+            source_text is not None
             and max_w_for_text != float("inf")
             and max_w_for_text >= 1
-            and "\n" not in node.text
-            and string_width(node.text) > max_w_for_text
-        ):
-            wrapped = wrap_text(node.text, int(max_w_for_text), mode=text_wrap)
+            and string_width(source_text) > max_w_for_text
+            and (prev_wrapped_w is None or max_w_for_text < prev_wrapped_w)
+        )
+        if should_wrap:
+            assert source_text is not None  # narrowed for mypy
+            node.text = source_text
+            wrapped = wrap_text(source_text, int(max_w_for_text), mode=text_wrap)
             node.text = "\n".join(wrapped)
-            # Recompute measurements from wrapped content.
+            node.props["_wrapped_width"] = int(max_w_for_text)
             w = max((string_width(line) for line in wrapped), default=0)
             h = len(wrapped)
+        else:
+            # Measure the current text (source on first pass, prior
+            # wrap on later passes) under the current constraint.
+            w, h = _measure_text(node, max_w_for_text, float("inf"))
+        node.measured_width = w
+        node.measured_height = h
         if own_w < 0:
             # Apply min/max width even for auto-width text nodes.
             if style.min_width is not None:

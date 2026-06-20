@@ -167,3 +167,51 @@ def test_alt_screen_emits_hide_cursor_only_once() -> None:
     final = out.getvalue()
     assert final.count("\x1b[?1049l") == 1
     assert final.count("\x1b[?25h") == 1
+
+
+def test_alt_screen_brackets_decsc_decrc_around_buffer_swap() -> None:
+    """DECSC (``\\x1b 7``) saves the cursor before entering the alt buffer
+    and DECRC (``\\x1b 8``) restores it after exiting. The bracketing
+    covers terminals whose ``1049`` implementation forgets the cursor
+    save step. Enter order: DECSC, 1049h, hide. Exit order: show, 1049l,
+    DECRC.
+    """
+    inst, out = _render_silent(Text("hi"), columns=20, rows=2, alternate_screen=True)
+    written = out.getvalue()
+    pos_save = written.find("\x1b7")
+    pos_enter = written.find("\x1b[?1049h")
+    assert pos_save != -1
+    assert pos_enter != -1
+    assert pos_save < pos_enter
+    out.truncate(0)
+    out.seek(0)
+    inst.unmount()
+    exit_written = out.getvalue()
+    pos_exit = exit_written.find("\x1b[?1049l")
+    pos_restore = exit_written.find("\x1b8")
+    assert pos_exit != -1
+    assert pos_restore != -1
+    assert pos_exit < pos_restore
+
+
+def test_alt_screen_unmount_does_not_clear_frame_on_primary_buffer() -> None:
+    """After exiting the alt screen the prior live frame must NOT be
+    cleared via a diff — that diff would land on the user's restored
+    primary buffer and erase scrollback lines. Regression test for the
+    "scrollback disappeared after exit" bug.
+    """
+    inst, out = _render_silent(Text("hi"), columns=20, rows=2, alternate_screen=True)
+    # Wait for first paint to land so current_frame is populated.
+    time.sleep(0.1)
+    assert inst.current_frame != ""
+    out.truncate(0)
+    out.seek(0)
+    inst.unmount()
+    exit_written = out.getvalue()
+    # Exit escapes are expected.
+    assert "\x1b[?1049l" in exit_written
+    # No cursor-up / line-clear diff against the prior frame should be
+    # written after the buffer swap — those sequences would target the
+    # primary screen and clobber scrollback.
+    assert "\x1b[1A" not in exit_written  # cursor up one line
+    assert "\x1b[2K" not in exit_written  # clear line

@@ -49,6 +49,20 @@ __all__ = ["Terminal"]
 
 
 # CSI escape sequences.
+#
+# ``\x1b 7`` (DECSC) / ``\x1b 8`` (DECRC) bracket the alternate-screen
+# swap so the cursor position is explicitly saved before the buffer
+# switch and restored after we return. Private mode 1049 already
+# implies a save+restore on conformant terminals (xterm, modern
+# gnome-terminal, Windows Terminal, iTerm2), but some holdouts —
+# older ``cmd.exe`` / conhost builds and a few embedded terminals —
+# honour ``1049`` only as a buffer switch and forget to save the
+# cursor, which left users seeing the cursor jump to the top of the
+# screen after exit. Emitting DECSC/DECRC ourselves covers those
+# terminals without harming the conformant ones (the redundant
+# restore lands on the same cell).
+_DEC_SAVE_CURSOR = "\x1b7"  # DECSC — save cursor position + attrs
+_DEC_RESTORE_CURSOR = "\x1b8"  # DECRC — restore cursor position + attrs
 _ENTER_ALT = "\x1b[?1049h"  # swap to alternate screen buffer
 _EXIT_ALT = "\x1b[?1049l"  # restore main screen buffer
 _HIDE_CURSOR = "\x1b[?25l"
@@ -276,22 +290,28 @@ class Terminal:
 
         Idempotent — calling twice is a no-op. The corresponding
         :meth:`exit_alternate_screen` restores the main buffer and cursor
-        visibility. We deliberately avoid saving/restoring the cursor
-        position with ``\\x1b 8`` / ``\\x1b 7`` — not every terminal
-        supports it and ``\\x1b[?1049h`` already implies a save+restore
-        on the platforms that matter.
+        visibility. We emit ``\\x1b 7`` (DECSC) before the buffer swap
+        and :meth:`exit_alternate_screen` emits ``\\x1b 8`` (DECRC)
+        afterwards so the cursor position is saved and restored even
+        on terminals whose ``1049`` implementation forgets that step.
         """
         if self._alt_active:
             return
-        self.write(_ENTER_ALT + _HIDE_CURSOR)
+        self.write(_DEC_SAVE_CURSOR + _ENTER_ALT + _HIDE_CURSOR)
         self.flush()
         self._alt_active = True
 
     def exit_alternate_screen(self) -> None:
-        """Restore the main screen buffer and show the cursor."""
+        """Restore the main screen buffer and show the cursor.
+
+        Emits ``\\x1b 8`` (DECRC) after the buffer swap returns so the
+        cursor lands back where :meth:`enter_alternate_screen` saved
+        it. See that method's docstring for why the explicit save /
+        restore is needed on top of private mode ``1049``.
+        """
         if not self._alt_active:
             return
-        self.write(_SHOW_CURSOR + _EXIT_ALT)
+        self.write(_SHOW_CURSOR + _EXIT_ALT + _DEC_RESTORE_CURSOR)
         self.flush()
         self._alt_active = False
 

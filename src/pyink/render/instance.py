@@ -163,9 +163,18 @@ class Instance:
         try:
             self._do_unmount_tree()
         finally:
-            if self.terminal.in_alternate_screen:
+            was_alt = self.terminal.in_alternate_screen
+            if was_alt:
                 self.terminal.exit_alternate_screen()
-            self._clear_frame_for_exit()
+            # Only clear the live frame when we were rendering inline
+            # (i.e. on the primary screen). In alternate-screen mode the
+            # whole buffer is discarded by ``exit_alternate_screen`` and
+            # the prior frame lives in that disposable buffer — issuing a
+            # clear-frame diff *after* restoring the primary buffer would
+            # move the cursor / erase lines on the user's real scrollback,
+            # which is the bug behind "scrollback disappeared after exit".
+            if not was_alt:
+                self._clear_frame_for_exit()
             for cb in list(self.exit_callbacks):
                 _safe_call(cb)
             self._exit_event.set()
