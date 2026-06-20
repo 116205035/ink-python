@@ -11,6 +11,7 @@ from pyink.core.component import (
     ComponentInstance,
     HostInstance,
 )
+from pyink.core.context import Context, Provider, create_context
 from pyink.core.element import (
     Element,
     ElementChild,
@@ -37,6 +38,7 @@ from pyink.hooks import (
     AppHandle,
     WindowSize,
     use_app,
+    use_context,
     use_input,
     use_interval,
     use_window_size,
@@ -79,6 +81,10 @@ __all__ = [
     "Reconciler",
     "Scheduler",
     "create_element",
+    # Context system (Phase 2 PR5)
+    "Context",
+    "Provider",
+    "create_context",
     # Layout (PR3)
     "Edges",
     "FlexNode",
@@ -97,10 +103,11 @@ __all__ = [
     "Static",
     "Text",
     "Transform",
-    # Hooks (PR6 + Phase 2 PR1)
+    # Hooks (PR6 + Phase 2 PR1 + PR5)
     "AppHandle",
     "WindowSize",
     "use_app",
+    "use_context",
     "use_input",
     "use_interval",
     "use_window_size",

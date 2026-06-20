@@ -27,6 +27,7 @@ from pyink.core.component import (
     bind_current_component,
     restore_current_component,
 )
+from pyink.core.context import pop_provider, push_provider
 from pyink.core.element import Element
 
 __all__ = ["Reconciler"]
@@ -58,6 +59,11 @@ class Reconciler:
         Children are unmounted first (post-order). For ``ComponentInstance``
         every registered effect dispose is invoked in reverse registration
         order. Calling with ``None`` is a no-op.
+
+        ``"provider"`` :class:`HostInstance` entries were already popped
+        off the context stack at the end of their mount traversal (see
+        :meth:`_mount_host`), so there is nothing extra to do here —
+        ``use_context`` only reads during mount in the signals model.
         """
         if instance is None:
             return
@@ -91,6 +97,31 @@ class Reconciler:
         parent: Instance | None,
     ) -> HostInstance:
         instance = HostInstance(element, parent)
+        is_provider = element.type == "provider"
+        if is_provider:
+            # Push the Provider's value onto the context stack *before*
+            # mounting children so descendant component bodies (which run
+            # during ``_mount_element`` below) inherit the stack via the
+            # ``ContextVar`` binding and see this value through
+            # ``use_context``. We pop it again the moment this Provider's
+            # subtree finishes mounting — that keeps the stack correct for
+            # sibling subtrees, which otherwise would inherit a stale
+            # entry. PyInk component bodies run exactly once at mount
+            # (PRD Decision 1), so ``use_context`` only ever reads during
+            # this traversal; we don't need the entry to live past it.
+            push_provider(element.props["_provider_ctx_id"], element.props["_provider_value"])
+        try:
+            return self._mount_host_body(element, parent, instance)
+        finally:
+            if is_provider:
+                pop_provider(element.props["_provider_ctx_id"])
+
+    def _mount_host_body(
+        self,
+        element: Element,
+        parent: Instance | None,
+        instance: HostInstance,
+    ) -> HostInstance:
         if element.type == "text":
             # Text leaves are kept raw — renderer resolves callables at
             # read time. ``str`` and ``Callable[[], str]`` only (enforced

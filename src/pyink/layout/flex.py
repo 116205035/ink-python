@@ -388,6 +388,21 @@ def build_flex_tree(instance: Any) -> FlexNode | None:
             and instance.element.props.get("_pyink_static") is True
         ):
             return None
+        # Phase 2 PR5: a ``"provider"`` host is a layout-transparent
+        # wrapper whose only job is to push/pop the context stack at
+        # mount/unmount time. Collapse it to a fragment of its children
+        # so it contributes no box of its own.
+        if instance.element.type == "provider":
+            kids2: list[FlexNode] = []
+            for c in instance.children:
+                kid = build_flex_tree(c)
+                if kid is not None:
+                    kids2.append(kid)
+            if not kids2:
+                return None
+            if len(kids2) == 1:
+                return kids2[0]
+            return FlexNode(kind="box", style=FlexStyle(), children=kids2, source=instance)
         return _build_host_node(instance)
     return None
 
