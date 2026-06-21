@@ -159,3 +159,33 @@ def test_wrap_text_parametrised(
     text: str, width: int, mode: str, expected: list[str]
 ) -> None:
     assert wrap_text(text, width, mode=mode) == expected  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# truncate-end with embedded newlines (Bug 4 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_truncate_end_produces_single_row_for_long_text() -> None:
+    """Long text under ``truncate-end`` yields exactly one truncated row.
+
+    Regression: ``wrap_text(mode="truncate-end")`` used to fan a long
+    single-paragraph string into multiple wrapped rows (the mode was
+    treated as ``"wrap"`` for measurement). The fix splits the input
+    on embedded newlines first, then truncates each paragraph to one
+    row — so a single long line stays one row.
+    """
+    long_text = "x" * 100
+    out = wrap_text(long_text, 20, mode="truncate-end")
+    assert len(out) == 1, f"expected 1 row, got {len(out)}: {out!r}"
+    # The visible width fits within 20 cells.
+    assert string_width(out[0]) <= 20
+
+
+def test_truncate_end_preserves_newline_split_for_multi_line() -> None:
+    """Multi-paragraph input under ``truncate-end`` keeps one row per paragraph."""
+    out = wrap_text("short\n" + "x" * 50 + "\nend", 20, mode="truncate-end")
+    assert len(out) == 3
+    assert out[0] == "short"
+    assert string_width(out[1]) <= 20
+    assert out[2] == "end"

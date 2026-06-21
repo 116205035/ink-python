@@ -1004,3 +1004,46 @@ def test_empty_text_does_not_affect_sibling_layout() -> None:
         text("hello"),
     )
     assert render_to_string(tree) == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Column box height sums children heights (Bug 3 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_column_box_height_sums_children_heights() -> None:
+    """Column-direction Box reports total height = sum of children heights.
+
+    Regression: a column Box with three single-row Text children must
+    report ``layout_height == 3`` (plus any border/padding). The flex
+    engine must NOT stretch a column child to fill the parent's main
+    axis — that would inflate the Box height beyond its content.
+
+    Uses ``render_to_string`` with explicit width/height so the root
+    fills the viewport; the assertion is that the *content* of the
+    column Box appears on consecutive rows with no gap rows in between.
+    """
+    tree = box(
+        text("aaa"),
+        text("bbb"),
+        text("ccc"),
+        flexDirection="column",
+    )
+    # Root Box defaults to filling the viewport, but the column
+    # children should still stack on consecutive rows with no gap.
+    out = render_to_string(tree, columns=10)
+    lines = out.split("\n")
+    # Find the index of the first content line.
+    first_content = next((i for i, ln in enumerate(lines) if "aaa" in ln), None)
+    assert first_content is not None, f"aaa not found in {lines!r}"
+    # The next two lines should contain bbb and ccc — no blank row
+    # between them. (Blank rows would mean the column children were
+    # stretched to spread across the viewport.)
+    assert "bbb" in lines[first_content + 1], (
+        f"bbb should be on the row immediately after aaa; "
+        f"got lines={lines!r}"
+    )
+    assert "ccc" in lines[first_content + 2], (
+        f"ccc should be on the row immediately after bbb; "
+        f"got lines={lines!r}"
+    )

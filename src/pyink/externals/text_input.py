@@ -69,6 +69,8 @@ from pyink.components.text import Text
 from pyink.core.element import Element, create_element
 from pyink.core.signal import Ref, Signal, effect, ref, signal
 from pyink.hooks.input import use_input
+from pyink.layout._text_width_context import get_current_text_width
+from pyink.layout.measure import string_width
 from pyink.render.ansi import apply_style, parse_color
 from pyink.render.keys import Key
 
@@ -421,6 +423,197 @@ def _split_lines(value: str) -> list[tuple[int, str]]:
         out.append((offset, piece))
         offset += len(piece) + 1  # +1 for the consumed newline.
     return out
+
+
+#: Ellipsis glyph used by per-line truncation. Kept consistent with
+#: :mod:`pyink.layout.measure`'s ``_ELLIPSIS`` so the visual matches the
+#: generic ``truncate-end`` wrap path the Text node falls back to when
+#: the line fits without cursor-aware intervention.
+_ELLIPSIS = "…"
+
+
+def _truncate_line_around_cursor(
+    rendered_line: str,
+    *,
+    width: int,
+    cursor_visible_column: int | None,
+    cursor_visible_width: int,
+) -> str:
+    """Truncate a single rendered line to ``width`` cells, keeping the cursor.
+
+    ``rendered_line`` is one row of the TextInput's display output —
+    the line's text with cursor / selection SGR escapes already
+    spliced in. ANSI escapes don't count toward the visible width.
+
+    ``cursor_visible_column`` is the 0-based cell column the cursor
+    sits at within ``rendered_line`` (``None`` when the cursor is on a
+    different row). ``cursor_visible_width`` is how many cells the
+    cursor itself occupies (1 for block / underline; 1 for bar — the
+    bar inserts an extra cell).
+
+    The truncation strategy adapts to where the cursor is:
+
+    * **No cursor on this row** — plain ``truncate-end`` (leading
+      characters, trailing ellipsis). Matches the generic wrap engine.
+    * **Cursor fits in the leading ``width`` cells** — same: keep the
+      prefix that contains the cursor, append ellipsis. Cursor visible.
+    * **Cursor is past the leading window** — keep a trailing window
+      that ends at (cursor + its width) so the cursor stays visible at
+      the right edge; prepend an ellipsis. This loses some leading
+      content but never the cursor — matches the ink-text-input UX
+      where typing past the right edge scrolls the input so the cursor
+      remains on screen.
+    """
+    if width <= 0:
+        return ""
+    line_width = string_width(rendered_line)
+    if line_width <= width:
+        return rendered_line
+    # No cursor on this row — plain truncate-end.
+    if cursor_visible_column is None:
+        target = width - 1  # 1 cell for ellipsis
+        if target <= 0:
+            return _ELLIPSIS[:width]
+        return _take_visible_cells(rendered_line, target) + _ELLIPSIS
+    # Cursor on this row. Compute the cell range it occupies.
+    cursor_end = cursor_visible_column + max(0, cursor_visible_width)
+    # Case 1: cursor fits in the leading window.
+    if cursor_end <= width - 1:
+        target = width - 1
+        return _take_visible_cells(rendered_line, target) + _ELLIPSIS
+    # Case 2: cursor past the leading window — show the trailing
+    # window that contains the cursor. Window = [cursor_end - width +
+    # 1, cursor_end). 1 cell reserved for the leading ellipsis.
+    target = width - 1
+    if target <= 0:
+        return _ELLIPSIS[:width]
+    # Right edge = cursor_end (exclusive). Left edge = right - target.
+    right_edge = cursor_end
+    left_edge = max(0, right_edge - target)
+    body = _take_visible_cells_range(rendered_line, left_edge, right_edge)
+    return _ELLIPSIS + body
+
+
+def _take_visible_cells(s: str, width: int) -> str:
+    """Return the longest prefix of ``s`` whose visible width ≤ ``width``.
+
+    ANSI escapes ride along with whatever visible character precedes
+    them; escapes that start the string attach to the first visible
+    character we keep. Trailing escapes immediately after the last
+    kept visible character are also preserved so the prefix never ends
+    mid-SGR (otherwise the renderer's per-row ``rstrip`` would eat a
+    trailing cursor cell whose reset escape was dropped).
+    """
+    if width <= 0:
+        return ""
+    from pyink.layout.measure import _char_width, _split_visible_chunks
+
+    out: list[str] = []
+    pending_trailing: list[str] = []
+    used = 0
+    for chunk, is_escape in _split_visible_chunks(s):
+        if is_escape:
+            if out:
+                # We've kept at least one visible char — escape rides
+                # along (will be trailing if no more visible chars kept).
+                pending_trailing.append(chunk)
+            else:
+                out.append(chunk)
+            continue
+        for ch in chunk:
+            w = _char_width(ch)
+            if used + w > width:
+                return "".join(out) + "".join(pending_trailing)
+            out.append(ch)
+            used += w
+            pending_trailing.clear()
+    return "".join(out)
+
+
+def _take_visible_cells_range(s: str, start: int, end: int) -> str:
+    """Return the substring of ``s`` covering visible cells ``[start, end)``.
+
+    ANSI escapes that attach to in-window visible characters are kept
+    verbatim. Trailing escapes (those after the last in-window visible
+    character but before any out-of-window visible character) are also
+    kept so the returned substring never ends mid-SGR — the renderer's
+    per-row ``rstrip`` would otherwise eat a trailing cursor cell whose
+    reset escape was dropped, leaving the SGR open and the visible
+    space stripped (Bug: long line + cursor at end → cursor cell vanishes
+    after rstrip removes the un-reset space).
+    """
+    if end <= start:
+        return ""
+    from pyink.layout.measure import _char_width, _split_visible_chunks
+
+    out: list[str] = []
+    pending_trailing_escapes: list[str] = []
+    cell_pos = 0
+    seen_in_window = False
+    done = False
+    for chunk, is_escape in _split_visible_chunks(s):
+        if done:
+            # We've passed the window; only trailing escapes immediately
+            # after the last in-window visible char should ride along,
+            # and only until the next visible char appears.
+            if is_escape:
+                pending_trailing_escapes.append(chunk)
+            else:
+                break
+            continue
+        if is_escape:
+            # Keep escape if we're inside the window; otherwise it
+            # might be a trailing escape past the last in-window char.
+            if start <= cell_pos < end:
+                out.append(chunk)
+            elif seen_in_window and cell_pos >= end:
+                pending_trailing_escapes.append(chunk)
+            continue
+        for ch in chunk:
+            w = _char_width(ch)
+            if w <= 0:
+                # Combining mark — attach only if its base is in window.
+                if start <= cell_pos < end and out:
+                    out.append(ch)
+                continue
+            ch_start = cell_pos
+            ch_end = cell_pos + w
+            if ch_end <= start:
+                # Entirely before window.
+                cell_pos = ch_end
+                continue
+            if ch_start >= end:
+                # Entirely after window — flush trailing escapes & stop.
+                done = True
+                break
+            # Overlaps window — keep it.
+            out.append(ch)
+            cell_pos = ch_end
+            seen_in_window = True
+            if cell_pos >= end:
+                # We just consumed the last in-window cell; mark done
+                # so subsequent escapes get captured as trailing.
+                done = True
+                break
+    return "".join(out) + "".join(pending_trailing_escapes)
+
+
+def _cursor_visible_column(
+    line_text_raw: str,
+    mask: str | None,
+    local_cursor: int,
+) -> int:
+    """Return the visible cell column of the cursor within one row.
+
+    ``local_cursor`` is the cursor's character offset within the line
+    (``cursor - line_start``). Masking collapses each character to a
+    single-cell glyph, so the column equals ``local_cursor``. Without
+    a mask the column is the cumulative :func:`string_width` of the
+    characters before the cursor.
+    """
+    if mask:
+        return local_cursor
+    return string_width(line_text_raw[:local_cursor])
 
 
 # ---------------------------------------------------------------------------
@@ -865,6 +1058,20 @@ def _TextInputImpl(**props: Any) -> Element:
             )
             return [apply_style(placeholder, dimColor=True) + cursor_cell]
 
+        # Width available for per-line truncation. We pre-truncate each
+        # rendered line so the cursor cell is preserved when the line
+        # overflows its column budget — the generic ``truncate-end``
+        # wrap path would happily drop the cursor SGR if the cursor
+        # sits past the truncation point (Bug: long line + cursor at
+        # end → cursor "disappears"). Layout's wrap is kept as a
+        # safety net for any case we miss here.
+        avail_width = get_current_text_width()
+        # Cursor visible-cell width: block / underline sit on a char
+        # (width 1); bar inserts its own 1-cell inverse space. The
+        # downstream ``_truncate_line_around_cursor`` only needs a
+        # rough per-cell budget.
+        cursor_cell_width = 1
+
         lines: list[str] = []
         for line_start, line_text_raw in _split_lines(cur_value):
             line_text = mask * len(line_text_raw) if mask else line_text_raw
@@ -879,6 +1086,28 @@ def _TextInputImpl(**props: Any) -> Element:
                 cursor_color=cursor_color,
                 selection=cur_sel,
             )
+            if avail_width is not None and avail_width >= 1:
+                cursor_col: int | None = None
+                if cursor_in_line:
+                    # The cursor sits at the buffer column
+                    # ``cur_cursor - line_start`` of this row. Mask
+                    # collapses chars to mask glyph (width 1 each) so
+                    # the column is preserved under masking. Wide
+                    # characters in the line would shift the cursor's
+                    # visible column, but TextInput does not currently
+                    # account for that — the cursor's SGR lands at the
+                    # buffer offset within the rendered string.
+                    cursor_col = _cursor_visible_column(
+                        line_text_raw,
+                        mask,
+                        cur_cursor - line_start,
+                    )
+                rendered = _truncate_line_around_cursor(
+                    rendered,
+                    width=avail_width,
+                    cursor_visible_column=cursor_col,
+                    cursor_visible_width=cursor_cell_width,
+                )
             lines.append(rendered)
         return lines
 

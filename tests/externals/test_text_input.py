@@ -1877,3 +1877,126 @@ def test_multi_line_cursor_in_second_row(
         f"cursor should be on the 'bbb' row; got row={rows[cursor_row_idx]!r}"
     )
     inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Cursor preservation under per-line truncation (Bug 1 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_multi_line_arrow_down_clamps_at_last_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ArrowDown at the last line never moves the cursor past buffer end.
+
+    Regression: ``_offset_below`` and the surrounding ArrowDown handler
+    must keep the cursor within ``[0, len(value)]``. Multiple ArrowDown
+    presses on the last line should leave the cursor at end-of-buffer
+    (the on_cursor_change callback mirrors the internal cursor signal,
+    so we assert via that rather than parsing the rendered cursor cell).
+    """
+    offsets: list[int] = []
+    feed: list[bytes] = [
+        b"\x1b[B",  # Down — already on last line, clamp to end-of-line
+        b"\x1b[B",  # Down — still clamped
+        b"\x1b[B",  # Down — still clamped
+    ]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="ab\ncde\nfghi",
+            multiline=True,
+            on_cursor_change=offsets.append,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=6,
+    )
+    # The initial-mount callback fires once with offset 11 (end of
+    # buffer). Each ArrowDown on the last line should add at most one
+    # more "11" entry (the signal doesn't fire when the value is
+    # unchanged, but the handler always goes through _set_cursor which
+    # writes the clamped value — some re-emissions may show up).
+    assert _wait_for(lambda: len(offsets) >= 1)
+    time.sleep(0.3)
+    inst.unmount()
+    # Every captured offset must be a valid cursor position.
+    assert all(0 <= o <= 11 for o in offsets), (
+        f"cursor escaped valid range: {offsets!r}"
+    )
+    # The cursor must end at the end of the last line (offset 11).
+    assert offsets[-1] == 11
+
+
+def test_cursor_survives_per_line_truncation_long_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cursor cell stays visible when its row is truncated to fit the box.
+
+    Regression: when a multi-line TextInput row is wider than the
+    available column budget, the per-line truncation path used to drop
+    the cursor's SGR sequences — the inverse-video start survived but
+    its reset was clipped, leaving an unterminated SGR run that the
+    renderer's per-row ``rstrip`` would then eat (cursor cell became
+    an un-reset space at end of row → stripped → cursor "vanished").
+
+    The cursor-aware pre-truncation in :mod:`pyink.externals.text_input`
+    preserves the cursor cell + its reset escape so the cursor stays
+    visible even when its row is truncated.
+    """
+    inst, _ = _mount(
+        TextInput(
+            initial_value="short\n" + "x" * 40,
+            multiline=True,
+        ),
+        monkeypatch=monkeypatch,
+        columns=30,
+        rows=6,
+    )
+    assert _wait_for(lambda: "\x1b[7m" in _frame(inst))
+
+    def cursor_cell_intact() -> bool:
+        # The cursor cell is the inverse-video space + reset pair.
+        # An unterminated SGR run (the regression) shows up as a bare
+        # ``\x1b[7m`` with no following ``\x1b[0m`` on the same row.
+        for row in _frame(inst).split("\n"):
+            if "\x1b[7m" in row and "\x1b[0m" not in row:
+                return False
+        return "\x1b[7m \x1b[0m" in _frame(inst)
+
+    assert _wait_for(cursor_cell_intact), (
+        f"cursor cell lost its reset escape under truncation: "
+        f"{_frame(inst)!r}"
+    )
+    inst.unmount()
+
+
+def test_text_input_long_value_truncates_to_one_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Single-line TextInput with very long content renders exactly 1 row.
+
+    Regression: long single-line content used to wrap into extra rows
+    inside its own Box and blow the column layout. With per-line
+    pre-truncation + ``wrap="truncate-end"`` the box stays at 1 row.
+    """
+    long_value = "a" * 80
+    inst, _ = _mount(
+        TextInput(initial_value=long_value),
+        monkeypatch=monkeypatch,
+        columns=20,
+        rows=3,
+    )
+    assert _wait_for(lambda: "a" in _visible(_frame(inst)))
+
+    def one_visible_row() -> bool:
+        visible_lines = [
+            line for line in _visible(_frame(inst)).split("\n") if line.strip()
+        ]
+        return len(visible_lines) == 1
+
+    assert _wait_for(one_visible_row), (
+        f"single-line input should render exactly 1 row; "
+        f"got: {_visible(_frame(inst)).split(chr(10))!r}"
+    )
+    inst.unmount()
