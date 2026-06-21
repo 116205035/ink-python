@@ -893,15 +893,26 @@ def _TextInputImpl(**props: Any) -> Element:
         return "\n".join(_render_lines())
 
     # Single-line: keep PR1's "one Text child inside the Box" shape so
-    # existing PR1 layout / visual tests keep matching. Multi-line: emit
-    # one Text child per rendered line so the Box lays them out as rows
-    # and measure / wrap treat each line as its own unit.
+    # existing PR1 layout / visual tests keep matching. The Text uses
+    # ``wrap="truncate-end"`` so content longer than the available width
+    # is clipped to a single visible row (with an ellipsis) instead of
+    # growing the parent Box and blowing the column layout — this keeps
+    # long single-line input from cascading into vertical overflow that
+    # crops sibling components.
+    # Multi-line: emit one Text child per rendered line so the Box lays
+    # them out as rows. Each per-line Text also uses ``truncate-end`` so
+    # a very long physical line never wraps into extra rows and pushes
+    # the layout past its row budget.
+    text_wrap = "truncate-end"
     if not multiline:
-        return Box(Text(render_text, color=color), **box_props)
+        return Box(
+            Text(render_text, color=color, wrap=text_wrap),
+            **box_props,
+        )
 
     def render_lines_list() -> list[Element]:
         return [
-            Text(line_callable, color=color)
+            Text(line_callable, color=color, wrap=text_wrap)
             for line_callable in _per_line_callables()
         ]
 

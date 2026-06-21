@@ -1732,3 +1732,80 @@ def test_on_cursor_change_reflects_latest_callback(
     )
     assert _wait_for(lambda: offsets_a == [3, 2])
     inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Long-content layout — Text uses ``wrap="truncate-end"`` so the parent Box
+# never grows past its row budget. (Bug fix: single-line TextInput with very
+# long content used to wrap into extra rows and blow the column layout.)
+# ---------------------------------------------------------------------------
+
+
+def test_single_line_input_long_content_does_not_grow_box(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Content longer than the viewport renders as a single visible row.
+
+    A single-line TextInput whose buffer exceeds the container width must
+    NOT push the parent Box into extra rows — that would cascade into the
+    surrounding column layout and crop sibling components. The internal
+    Text uses ``wrap="truncate-end"`` so long content clips to one row.
+    """
+    # 40 chars in a 20-col viewport → must overflow horizontally without
+    # adding vertical rows.
+    long_value = "a" * 40
+    inst, _ = _mount(
+        TextInput(initial_value=long_value),
+        monkeypatch=monkeypatch,
+        columns=20,
+        rows=3,
+    )
+    # Wait for first paint, then count newlines in the raw frame. A
+    # single-line input renders exactly one content row; the parent Box
+    # has no border so the frame should have at most one newline (the
+    # row terminator).
+    assert _wait_for(lambda: "a" in _visible(_frame(inst)))
+    frame = _frame(inst)
+    # Strip trailing blank lines the renderer pads the viewport with.
+    # The meaningful content is everything before the first run of empty
+    # padding rows; we count non-empty visible rows.
+    visible_lines = [
+        line for line in _visible(frame).split("\n") if line.strip()
+    ]
+    assert len(visible_lines) <= 1, (
+        f"single-line input should render ≤ 1 visible row, got {visible_lines!r}"
+    )
+    inst.unmount()
+
+
+def test_multi_line_input_each_line_truncates_at_box_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each physical line of a multi-line TextInput truncates at box width.
+
+    A multi-line TextInput with one very long physical line must NOT let
+    that line wrap into extra rows inside its own Box. Each per-line Text
+    child uses ``wrap="truncate-end"`` so a 2-line buffer stays 2 rows
+    even if one line is wider than the viewport.
+    """
+    # Line 0 is short, line 1 is 40 chars (overflows the 20-col viewport).
+    inst, _ = _mount(
+        TextInput(initial_value="short\n" + "b" * 40, multiline=True),
+        monkeypatch=monkeypatch,
+        columns=20,
+        rows=6,
+    )
+    assert _wait_for(lambda: "short" in _visible(_frame(inst)))
+    frame = _frame(inst)
+    visible_lines = [
+        line for line in _visible(frame).split("\n") if line.strip()
+    ]
+    # Two logical lines → at most 2 visible content rows (no wrap-induced
+    # extras). We allow ≤ 2 to stay robust to the renderer's own padding
+    # logic but the key assertion is that the long line didn't fan out
+    # into 3+ rows.
+    assert len(visible_lines) <= 2, (
+        f"multi-line input should render ≤ 2 visible rows "
+        f"(one per logical line), got {visible_lines!r}"
+    )
+    inst.unmount()

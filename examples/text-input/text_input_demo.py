@@ -206,6 +206,7 @@ def TextInputDemo() -> Element:
                 Text(
                     lambda: f"Active: {focus.active_id or '(none)'}",
                     dimColor=True,
+                    wrap="truncate-end",
                 ),
                 Text(
                     lambda: (
@@ -215,9 +216,14 @@ def TextInputDemo() -> Element:
                         f"search={search_changes.value}"
                     ),
                     dimColor=True,
+                    wrap="truncate-end",
                 ),
-                Text(lambda: name_submit.value, dimColor=True),
-                Text(lambda: search_submit.value, dimColor=True),
+                Text(
+                    lambda: name_submit.value, dimColor=True, wrap="truncate-end"
+                ),
+                Text(
+                    lambda: search_submit.value, dimColor=True, wrap="truncate-end"
+                ),
                 flexDirection="column",
             )
         )
@@ -238,7 +244,13 @@ def TextInputDemo() -> Element:
 
 
 def main() -> int:
-    inst = render(TextInputDemo(), columns=72, rows=24)
+    # rows=30 — the demo stacks 4 labelled inputs (label + input + hint = 3
+    # rows each) plus title / subtitle / 4 status lines. The multi-line
+    # input only becomes usable when the surrounding column has enough
+    # vertical budget to show its second row; at rows=24 long single-line
+    # content or a multi-line Enter could push siblings past the viewport
+    # and crop them.
+    inst = render(TextInputDemo(), columns=72, rows=30)
     try:
         inst.wait_until_exit()
     except KeyboardInterrupt:
