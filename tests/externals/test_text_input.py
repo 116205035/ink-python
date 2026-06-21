@@ -2000,3 +2000,326 @@ def test_text_input_long_value_truncates_to_one_row(
         f"got: {_visible(_frame(inst)).split(chr(10))!r}"
     )
     inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Cursor SGR preservation under per-line truncation (Bug B regression)
+# ---------------------------------------------------------------------------
+
+
+def test_take_visible_cells_preserves_cursor_sgr_mid_string() -> None:
+    """``_take_visible_cells`` keeps a cursor SGR run that sits *inside* the
+    returned prefix.
+
+    Regression (Bug B): ``_take_visible_cells`` used to drop escapes held in
+    ``pending_trailing`` when a new visible character was appended — so a
+    block cursor over the first character of a long line lost its
+    ``\\x1b[7m<char>\\x1b[0m`` paint as soon as the visible window reached
+    past the cursor. The cursor visually "disappeared" even though the
+    cursor cell was inside the kept window.
+
+    The fix flushes pending escapes into ``out`` *before* the next visible
+    char so the cursor's SGR open + reset both survive into the prefix.
+    """
+    from pyink.externals.text_input import _take_visible_cells
+
+    # Block cursor over 'a' (green + inverse), then more visible text.
+    s = f"{ESC}[32m{ESC}[7ma{ESC}[0mbcdef"
+    # width=1 keeps just the cursor cell — both open and reset must survive.
+    assert _take_visible_cells(s, 1) == f"{ESC}[32m{ESC}[7ma{ESC}[0m"
+    # width=3 keeps cursor + 2 more chars — the cursor SGR run is still
+    # intact (open before 'a', reset after, then 'bc').
+    assert _take_visible_cells(s, 3) == f"{ESC}[32m{ESC}[7ma{ESC}[0mbc"
+
+
+def test_take_visible_cells_preserves_mid_string_cursor_sgr() -> None:
+    """Cursor SGR in the middle of the visible prefix survives the cut."""
+    from pyink.externals.text_input import _take_visible_cells
+
+    # Cursor over 'b' in "abcdef", keep width 3.
+    s = f"a{ESC}[7mb{ESC}[0mcdef"
+    assert _take_visible_cells(s, 3) == f"a{ESC}[7mb{ESC}[0mc"
+
+
+def test_take_visible_cells_drops_unclosed_cursor_when_past_width() -> None:
+    """When the cursor cell itself sits past the width budget, its open
+    SGR sequence is dropped (not left dangling).
+
+    A dangling ``\\x1b[7m`` at the end of a row would flip the terminal's
+    inverse video on for everything painted afterwards — the classic
+    "cursor covering multiple chars" visual bug.
+    """
+    from pyink.externals.text_input import _take_visible_cells
+
+    # Block cursor at end-of-input (inverse space). Width=3 keeps only
+    # 'abc'; the cursor's open `\x1b[7m` must be stripped so it doesn't
+    # leak inverse video onto whatever the renderer paints next.
+    s = f"abc{ESC}[7m {ESC}[0m"
+    assert _take_visible_cells(s, 3) == "abc"
+
+
+def test_take_visible_cells_keeps_trailing_reset_escape() -> None:
+    """A lone trailing reset (``\\x1b[0m``) at the cut point survives."""
+    from pyink.externals.text_input import _take_visible_cells
+
+    s = f"ab{ESC}[0m"
+    assert _take_visible_cells(s, 2) == f"ab{ESC}[0m"
+
+
+def test_cursor_stays_inverse_when_line_truncated_with_cursor_in_spaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Block cursor stays visible (single inverse cell) when its row is
+    truncated and the cursor sits inside the whitespace region.
+
+    Regression (Bug B): ``_take_visible_cells`` dropped the cursor's
+    ``\\x1b[7m`` opener when a new visible character was appended, so the
+    inverse-video paint leaked out of the cursor cell. The user-visible
+    symptom was "cursor covers multiple characters" or "cursor covers the
+    whole row" because the terminal's inverse video never got reset.
+
+    With the fix the cursor is rendered as exactly one inverse cell — no
+    matter how many times the user moves the arrow keys through the
+    whitespace region of a long line.
+    """
+    # 30 spaces between 'abc' and 'def' → buffer length 36.
+    initial = "abc" + " " * 30 + "def"
+    inst, _ = _mount(
+        TextInput(initial_value=initial, cursor_color="green"),
+        monkeypatch=monkeypatch,
+        columns=20,  # narrow so per-line truncation kicks in
+        rows=5,
+    )
+    # Move cursor all the way to the start (over 'a').
+    feed: list[bytes] = [b"\x1b[H"]
+    inst2 = inst
+    # Drive the cursor via the test harness by re-mounting with feed.
+    inst.unmount()
+    inst2, _ = _mount(
+        TextInput(initial_value=initial, cursor_color="green"),
+        monkeypatch=monkeypatch,
+        feed=feed + [b"\x1b[D"] * 5,  # Home then a few more lefts to be sure
+        columns=20,
+        rows=5,
+    )
+    assert _wait_for(lambda: f"{ESC}[7m" in _frame(inst2))
+
+    def exactly_one_inverse_cell() -> bool:
+        frame = _frame(inst2)
+        return frame.count(f"{ESC}[7m") == 1 and frame.count(f"{ESC}[0m") >= 1
+
+    assert _wait_for(exactly_one_inverse_cell), (
+        f"cursor should render exactly one inverse cell when truncated; "
+        f"got: {_frame(inst2)!r}"
+    )
+
+    # Also verify the inverse cell is properly closed by a reset on the
+    # same row (no dangling SGR opener).
+    frame = _frame(inst2)
+    for row in frame.split("\n"):
+        if f"{ESC}[7m" in row:
+            # Each inverse open must have a matching reset on the same row.
+            assert row.count(f"{ESC}[0m") >= row.count(f"{ESC}[7m"), (
+                f"row has unclosed inverse SGR: {row!r}"
+            )
+    inst2.unmount()
+
+
+def test_cursor_stays_single_inverse_through_arrow_navigation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Block cursor stays exactly one inverse cell through arrow-key
+    navigation in a long line with many spaces.
+
+    Regression (Bug B): the user reported that moving the cursor with
+    arrow keys through a long line containing many spaces caused the
+    cursor to visually "cover multiple characters". This was caused by
+    the per-line truncation path dropping the cursor's SGR reset when
+    extending the visible window past the cursor cell.
+
+    With the fix the inverse count stays at exactly 1 for every cursor
+    position the user can reach via arrow keys.
+    """
+    initial = "abc" + " " * 30 + "def"
+    # Drive: Home, then Right step by step.
+    feed: list[bytes] = [b"\x1b[H"]
+    # 15 right-arrow presses — walks the cursor through the whitespace.
+    feed.extend([b"\x1b[C"] * 15)
+    inst, _ = _mount(
+        TextInput(initial_value=initial, cursor_color="green"),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=5,
+    )
+    assert _wait_for(lambda: f"{ESC}[7m" in _frame(inst))
+
+    # After all the arrow keys have been processed the cursor must still
+    # render as exactly one inverse cell — the SGR run did not leak.
+    def exactly_one_inverse() -> bool:
+        return _frame(inst).count(f"{ESC}[7m") == 1
+
+    assert _wait_for(exactly_one_inverse, attempts=120), (
+        f"cursor should render exactly one inverse cell; "
+        f"got: {_frame(inst)!r}"
+    )
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Bug A regression — wrap="truncate-end" on dim Text renders as one row,
+# no wrap, no empty line between sibling status Texts.
+# ---------------------------------------------------------------------------
+
+
+def test_dim_status_text_truncates_to_single_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A long dim-colored ``Text`` with ``wrap="truncate-end"`` renders one row.
+
+    Regression (Bug A): the user reported that the demo's
+    ``Submitted: '...'`` status line still wrapped (and inserted an empty
+    line between two Submitted lines) even though the ``Text`` had
+    ``wrap="truncate-end"`` set. Root cause investigations showed the
+    truncation path was working — the test pins the behaviour so a future
+    regression in either the layout wrap engine or the measure
+    ``_truncate_end`` helper surfaces immediately.
+    """
+    long_text = "Submitted: '" + "abc " * 50 + "'"
+    inst, _ = _mount(
+        Box(
+            Text("Header"),
+            Text(long_text, dimColor=True, wrap="truncate-end"),
+            Text("Footer"),
+            flexDirection="column",
+            padding=1,
+            borderStyle="round",
+        ),
+        monkeypatch=monkeypatch,
+        columns=70,
+        rows=10,
+    )
+    assert _wait_for(lambda: "Submitted" in _visible(_frame(inst)))
+    frame = _frame(inst)
+
+    # The dim-coloured Submitted row should contain an ellipsis (…) —
+    # the signature of truncate-end.
+    visible_lines = [
+        line for line in _visible(frame).split("\n") if line.strip()
+    ]
+    submitted_rows = [ln for ln in visible_lines if "Submitted" in ln]
+    assert len(submitted_rows) == 1, (
+        f"Submitted text should be exactly 1 row, got {submitted_rows!r}"
+    )
+    # Ellipsis marks the truncation point.
+    assert "…" in submitted_rows[0], (
+        f"Submitted row should end with ellipsis, got {submitted_rows[0]!r}"
+    )
+    inst.unmount()
+
+
+def test_two_submitted_lines_no_empty_line_between(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two adjacent ``Text`` rows with ``wrap="truncate-end"`` stay adjacent.
+
+    Regression (Bug A): the user reported an empty row between two
+    Submitted status lines. The column layout must place them on
+    consecutive rows; the truncate-end wrap must not introduce extra
+    padding rows.
+    """
+    long_a = "Submitted: '" + "a" * 100 + "'"
+    long_b = "Submitted: '" + "b" * 100 + "'"
+    inst, _ = _mount(
+        Box(
+            Text(long_a, dimColor=True, wrap="truncate-end"),
+            Text(long_b, dimColor=True, wrap="truncate-end"),
+            flexDirection="column",
+            padding=1,
+            borderStyle="round",
+        ),
+        monkeypatch=monkeypatch,
+        columns=70,
+        rows=8,
+    )
+    assert _wait_for(lambda: "Submitted" in _visible(_frame(inst)))
+
+    visible_lines = [
+        line for line in _visible(_frame(inst)).split("\n") if line.strip()
+    ]
+    # Find indices of the two Submitted rows; they must be consecutive
+    # (no blank/empty row between them).
+    submitted_indices = [
+        i for i, ln in enumerate(visible_lines) if "Submitted" in ln
+    ]
+    assert len(submitted_indices) == 2, (
+        f"expected 2 Submitted rows, got {submitted_indices!r}"
+    )
+    assert submitted_indices[1] - submitted_indices[0] == 1, (
+        f"Submitted rows must be adjacent; gap = "
+        f"{submitted_indices[1] - submitted_indices[0]}"
+    )
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Bug C regression — TextInput inside a column Box with sibling Texts
+# renders label / value / hint on three separate rows.
+# ---------------------------------------------------------------------------
+
+
+def test_text_input_column_layout_renders_siblings_on_separate_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Label / TextInput / Hint stacked in a column render on 3 distinct rows.
+
+    Regression (Bug C): the user reported the input's content rendered
+    *next to* the placeholder on the same row. The cause was a visual
+    artefact rather than a layout bug (column flex direction places each
+    child on its own row), but the test pins the expected behaviour so a
+    future regression in either the column layout or the TextInput
+    placeholder/value rendering surfaces immediately.
+    """
+    inst, _ = _mount(
+        Box(
+            Text("Label", bold=True),
+            TextInput(
+                initial_value="actual content here",
+                placeholder="placeholder text",
+            ),
+            Text("Hint", dimColor=True),
+            flexDirection="column",
+            padding=1,
+            borderStyle="round",
+        ),
+        monkeypatch=monkeypatch,
+        columns=40,
+        rows=10,
+    )
+    assert _wait_for(
+        lambda: "Label" in _visible(_frame(inst))
+        and "actual content here" in _visible(_frame(inst))
+        and "Hint" in _visible(_frame(inst))
+    )
+
+    # Each of "Label", "actual content here", "Hint" must sit on its
+    # own row — never combined on the same visible row.
+    visible_lines = _visible(_frame(inst)).split("\n")
+    rows_with_label = [i for i, ln in enumerate(visible_lines) if "Label" in ln]
+    rows_with_content = [
+        i for i, ln in enumerate(visible_lines) if "actual content here" in ln
+    ]
+    rows_with_hint = [i for i, ln in enumerate(visible_lines) if "Hint" in ln]
+    assert rows_with_label and rows_with_content and rows_with_hint, (
+        f"missing expected rows: label={rows_with_label}, "
+        f"content={rows_with_content}, hint={rows_with_hint}"
+    )
+    label_row = rows_with_label[0]
+    content_row = rows_with_content[0]
+    hint_row = rows_with_hint[0]
+    # Three distinct rows in the expected order.
+    assert label_row < content_row < hint_row, (
+        f"rows not in expected order: label={label_row}, "
+        f"content={content_row}, hint={hint_row}"
+    )
+    inst.unmount()

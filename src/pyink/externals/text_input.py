@@ -503,6 +503,27 @@ def _take_visible_cells(s: str, width: int) -> str:
     kept visible character are also preserved so the prefix never ends
     mid-SGR (otherwise the renderer's per-row ``rstrip`` would eat a
     trailing cursor cell whose reset escape was dropped).
+
+    Bug fix (cursor-SGR preservation): when a *new* visible character
+    follows one or more escapes (e.g. the cursor's
+    ``\\x1b[7m<char>\\x1b[0m`` run), those escapes are flushed into
+    ``out`` *before* the new char is appended. The previous logic
+    dropped them with ``pending_trailing.clear()``, which silently
+    stripped the cursor's SGR sequences whenever the prefix extended
+    past the cursor — the visible character under the cursor kept its
+    colour but lost its inverse-video (block cursor) or underline
+    (underline cursor) paint, so the cursor "disappeared" whenever
+    the visible window reached past it.
+
+    Trailing-open-SGR guard: when the prefix ends because the next
+    visible character would overflow the width budget, any escapes
+    sitting in ``pending_trailing`` that *open* a new SGR run (without
+    a matching close) are dropped — leaving them in would emit an
+    unterminated ``\\x1b[7m`` that flips the terminal's inverse video
+    on for everything painted afterwards (Bug: long line + cursor at
+    end → cursor cell pushes past width → dangling ``\\x1b[7m`` leaks
+    inverse video onto the rest of the row). A lone trailing reset
+    (``\\x1b[0m``) is kept since it never opens new state.
     """
     if width <= 0:
         return ""
@@ -523,11 +544,38 @@ def _take_visible_cells(s: str, width: int) -> str:
         for ch in chunk:
             w = _char_width(ch)
             if used + w > width:
-                return "".join(out) + "".join(pending_trailing)
+                return _join_trailing(out, pending_trailing)
+            # Flush pending escapes into out *before* the new char —
+            # they belong to the SGR run that ended on the previous
+            # visible char (e.g. the reset that closes a cursor cell).
+            if pending_trailing:
+                out.extend(pending_trailing)
+                pending_trailing.clear()
             out.append(ch)
             used += w
-            pending_trailing.clear()
-    return "".join(out)
+    return _join_trailing(out, pending_trailing)
+
+
+def _join_trailing(out: list[str], pending_trailing: list[str]) -> str:
+    """Join ``out`` with sanitised ``pending_trailing`` escapes.
+
+    Strips any trailing run of SGR *openers* (escapes other than the
+    full ``\\x1b[0m`` reset) so the prefix never leaves the terminal
+    in a state the renderer's downstream cells did not opt into. See
+    :func:`_take_visible_cells` for the bug context.
+    """
+    if not pending_trailing:
+        return "".join(out)
+    # Keep only escapes that look like resets (``\x1b[0m`` or any
+    # ``\x1b[<digits>m`` whose final value clears inverse/underline/etc).
+    # The cheap heuristic: keep if the payload ends in ``0m`` (full or
+    # parameterised reset) and drop otherwise. ``\x1b[0m`` is the only
+    # reset we ever emit in this module, so the heuristic is exact.
+    kept: list[str] = []
+    for esc in pending_trailing:
+        if esc.endswith("0m"):
+            kept.append(esc)
+    return "".join(out) + "".join(kept)
 
 
 def _take_visible_cells_range(s: str, start: int, end: int) -> str:
