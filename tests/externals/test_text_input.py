@@ -1809,3 +1809,71 @@ def test_multi_line_input_each_line_truncates_at_box_width(
         f"(one per logical line), got {visible_lines!r}"
     )
     inst.unmount()
+
+
+def test_multi_line_renders_one_row_per_line_after_enter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pressing Enter grows the rendered multi-line TextInput by one row.
+
+    Regression: the previous implementation built the Box's children list
+    *at mount* with a fixed line count derived from the initial value.
+    Because PyInk function components run exactly once at mount, that
+    count froze — typing Enter added a ``\\n`` to the buffer signal but
+    never produced a new Text child, so the second line stayed invisible.
+
+    The fix renders the full multi-line buffer through a single Text
+    whose callable re-evaluates on every signal write, so the layout
+    engine sees the up-to-date ``\\n``-joined string each paint.
+    """
+    # Type "aa", Enter, "bb", Enter, "cc" → buffer ends up as "aa\nbb\ncc".
+    feed: list[bytes] = [b"a", b"a", b"\r", b"b", b"b", b"\r", b"c", b"c"]
+    changes: list[str] = []
+    inst, _ = _mount(
+        TextInput(multiline=True, on_change=changes.append),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=8,
+    )
+    assert _wait_for(lambda: _last_change_is(changes, "aa\nbb\ncc"))
+    visible_lines = [
+        line for line in _visible(_frame(inst)).split("\n") if line.strip()
+    ]
+    # All three logical lines should appear in the rendered frame.
+    assert "aa" in " ".join(visible_lines)
+    assert "bb" in " ".join(visible_lines)
+    assert "cc" in " ".join(visible_lines)
+    inst.unmount()
+
+
+def test_multi_line_cursor_in_second_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cursor on line 1 renders the cursor cell on the second rendered row.
+
+    With initial value ``"aaa\\nbbb"`` the cursor starts at offset 7
+    (end of "bbb"). The block cursor sits on the 'b' that ends the
+    second line, so the inverse-video cursor cell must land on the
+    second visible row, not the first.
+    """
+    inst, _ = _mount(
+        TextInput(initial_value="aaa\nbbb", multiline=True),
+        monkeypatch=monkeypatch,
+        columns=20,
+        rows=6,
+    )
+    # The frame should contain the cursor SGR escape (inverse video).
+    assert _wait_for(lambda: "\x1b[7m" in _frame(inst))
+    frame = _frame(inst)
+    rows = frame.split("\n")
+    # Find the row carrying the cursor and confirm it also carries the
+    # second line's content ('bbb'). The first row should not carry the
+    # cursor.
+    cursor_rows = [i for i, r in enumerate(rows) if "\x1b[7m" in r]
+    assert cursor_rows, f"cursor SGR not found in frame: {frame!r}"
+    cursor_row_idx = cursor_rows[0]
+    assert "bbb" in _visible(rows[cursor_row_idx]), (
+        f"cursor should be on the 'bbb' row; got row={rows[cursor_row_idx]!r}"
+    )
+    inst.unmount()

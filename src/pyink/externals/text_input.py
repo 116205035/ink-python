@@ -883,55 +883,34 @@ def _TextInputImpl(**props: Any) -> Element:
         return lines
 
     def render_text() -> str:
-        # Single-line render path (PR1-compatible). When the buffer has
-        # no newlines we keep the legacy "one Text" output so existing
-        # tests that string-match the frame keep working.
-        cur_value = value.value
-        if "\n" not in cur_value:
-            lines = _render_lines()
-            return lines[0] if lines else ""
+        # Build the full rendered buffer (with cursor + selection overlays
+        # already applied per line) and join lines with ``\n``. The single
+        # Text child carries the multi-line payload; layout's wrap engine
+        # (``truncate-end``) preserves embedded newlines and measures each
+        # paragraph independently, so the Box grows to N rows when the
+        # buffer has N lines. Per-line truncation keeps very long physical
+        # lines from pushing the layout past its column / row budget.
+        #
+        # Why one Text instead of one Text per line: PyInk function
+        # components run *exactly once* at mount (PRD Decision 1). The
+        # children list passed to :func:`Box` is captured at that single
+        # mount, so a per-line scheme would freeze the row count at the
+        # initial value and never reflect lines the user adds by pressing
+        # Enter later. A single Text whose callable re-evaluates the
+        # current buffer on every signal write sidesteps the freeze
+        # entirely — the layout engine sees the up-to-date ``\n``-joined
+        # string on every paint.
         return "\n".join(_render_lines())
 
-    # Single-line: keep PR1's "one Text child inside the Box" shape so
-    # existing PR1 layout / visual tests keep matching. The Text uses
-    # ``wrap="truncate-end"`` so content longer than the available width
-    # is clipped to a single visible row (with an ellipsis) instead of
-    # growing the parent Box and blowing the column layout — this keeps
-    # long single-line input from cascading into vertical overflow that
-    # crops sibling components.
-    # Multi-line: emit one Text child per rendered line so the Box lays
-    # them out as rows. Each per-line Text also uses ``truncate-end`` so
-    # a very long physical line never wraps into extra rows and pushes
-    # the layout past its row budget.
-    text_wrap = "truncate-end"
-    if not multiline:
-        return Box(
-            Text(render_text, color=color, wrap=text_wrap),
-            **box_props,
-        )
-
-    def render_lines_list() -> list[Element]:
-        return [
-            Text(line_callable, color=color, wrap=text_wrap)
-            for line_callable in _per_line_callables()
-        ]
-
-    def _per_line_callables() -> list[Callable[[], str]]:
-        """Build one callable per line; each closure captures its index."""
-        rendered_callables: list[Callable[[], str]] = []
-
-        def make_line_callable(idx: int) -> Callable[[], str]:
-            def line_callable() -> str:
-                return _render_lines()[idx]
-
-            return line_callable
-
-        line_count = max(1, value.value.count("\n") + 1)
-        for i in range(line_count):
-            rendered_callables.append(make_line_callable(i))
-        return rendered_callables
-
-    return Box(*render_lines_list(), flexDirection="column", **box_props)
+    # ``wrap="truncate-end"`` so a single line longer than the available
+    # width is clipped (with ellipsis) to one visible row instead of
+    # growing the parent Box and pushing siblings past the column / row
+    # budget. For multi-line buffers the wrap engine preserves the
+    # embedded newlines, so the Box still grows to N rows.
+    return Box(
+        Text(render_text, color=color, wrap="truncate-end"),
+        **box_props,
+    )
 
 
 def TextInput(
