@@ -160,11 +160,12 @@ def test_text_input_props_capture_defaults() -> None:
     assert el.props["placeholder"] is None
     assert el.props["on_change"] is None
     assert el.props["on_submit"] is None
+    assert el.props["on_cursor_change"] is None
     assert el.props["mask"] is None
     assert el.props["max_length"] is None
     assert el.props["color"] is None
     assert el.props["cursor_color"] is None
-    assert el.props["cursor_style"] == "bar"
+    assert el.props["cursor_style"] == "block"
     assert el.props["is_active"] is True
     assert el.props["box_props"] == {}
 
@@ -176,16 +177,20 @@ def test_text_input_props_capture_caller_values() -> None:
     def on_submit(v: str) -> None:
         pass
 
+    def on_cursor_change(offset: int) -> None:
+        pass
+
     el = TextInput(
         initial_value="abc",
         placeholder="hint",
         on_change=on_change,
         on_submit=on_submit,
+        on_cursor_change=on_cursor_change,
         mask="*",
         max_length=10,
         color="red",
         cursor_color="green",
-        cursor_style="block",
+        cursor_style="bar",
         is_active=False,
         padding=1,
     )
@@ -193,11 +198,12 @@ def test_text_input_props_capture_caller_values() -> None:
     assert el.props["placeholder"] == "hint"
     assert el.props["on_change"] is on_change
     assert el.props["on_submit"] is on_submit
+    assert el.props["on_cursor_change"] is on_cursor_change
     assert el.props["mask"] == "*"
     assert el.props["max_length"] == 10
     assert el.props["color"] == "red"
     assert el.props["cursor_color"] == "green"
-    assert el.props["cursor_style"] == "block"
+    assert el.props["cursor_style"] == "bar"
     assert el.props["is_active"] is False
     # box_props absorbs the extra kwargs.
     assert el.props["box_props"] == {"padding": 1}
@@ -1277,7 +1283,15 @@ def test_selection_collapses_after_plain_navigation(
 def test_selection_renders_with_inverse_video(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The selected range is wrapped in SGR inverse video (``\\x1b[7m``)."""
+    """The selected range is wrapped in SGR inverse video (``\\x1b[7m``).
+
+    With the default ``block`` cursor, the cursor sits *on* the character
+    just past the selection (offset 2 here, over ``'c'``) and is rendered
+    as its own inverse-video cell — independent of the selection paint.
+    Stripping ANSI must therefore reveal ``"abcd"`` in order while the
+    raw frame carries two inverse-video runs: one for ``"ab"`` (the
+    selection) and one for ``"c"`` (the block cursor).
+    """
     feed: list[bytes] = [
         b"\x1b[H",       # Home
         b"\x1b[1;2C",    # Shift+Right → [0, 1)
@@ -1286,11 +1300,12 @@ def test_selection_renders_with_inverse_video(
     inst, _ = _mount(
         TextInput(initial_value="abcd"), monkeypatch=monkeypatch, feed=feed
     )
-    # The first two chars ("ab") must be wrapped in inverse video.
-    assert _wait_for(
-        lambda: f"{ESC}[7mab{ESC}[0m" in _frame(inst)
-        and "cd" in _frame(inst)
-    )
+    # The selected range ("ab") is wrapped in inverse video.
+    assert _wait_for(lambda: f"{ESC}[7mab{ESC}[0m" in _frame(inst))
+    # The block cursor over 'c' produces its own inverse-video run, so
+    # the raw frame never carries the literal substring "cd" — but the
+    # visible text (ANSI stripped) must still read "abcd".
+    assert _wait_for(lambda: _visible(_frame(inst))[:4].strip(" ") == "abcd")
     inst.unmount()
 
 
@@ -1600,3 +1615,120 @@ def test_multiline_default_is_false() -> None:
 def test_multiline_prop_captured() -> None:
     el = TextInput(multiline=True)
     assert el.props["multiline"] is True
+
+
+# ===========================================================================
+# on_cursor_change — cursor-moved callback
+# ===========================================================================
+
+
+def test_default_cursor_style_is_block() -> None:
+    """PRD Bug 1 — default ``cursor_style`` is now ``"block"``."""
+    el = TextInput()
+    assert el.props["cursor_style"] == "block"
+
+
+def test_on_cursor_change_fires_on_mount_with_initial_offset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``on_cursor_change`` fires once on mount with the initial cursor offset.
+
+    Mirrors ``on_change``'s first-write semantics — lets callers seed a
+    cursor mirror without a separate initialisation path.
+    """
+    offsets: list[int] = []
+    inst, _ = _mount(
+        TextInput(initial_value="abc", on_cursor_change=offsets.append),
+        monkeypatch=monkeypatch,
+    )
+    assert _wait_for(lambda: offsets == [3])
+    inst.unmount()
+
+
+def test_on_cursor_change_fires_on_arrow(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Left arrow moves the cursor → callback fires with the new offset."""
+    offsets: list[int] = []
+    feed: list[bytes] = [b"\x1b[D"]  # Left
+    inst, _ = _mount(
+        TextInput(initial_value="abc", on_cursor_change=offsets.append),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    # Mount → 3; Left → 2.
+    assert _wait_for(lambda: offsets == [3, 2])
+    inst.unmount()
+
+
+def test_on_cursor_change_fires_on_typing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Typing a character advances the cursor → callback fires."""
+    offsets: list[int] = []
+    feed: list[bytes] = [b"X"]
+    inst, _ = _mount(
+        TextInput(initial_value="abc", on_cursor_change=offsets.append),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    # Mount → 3; type 'X' → cursor at 4.
+    assert _wait_for(lambda: offsets == [3, 4])
+    inst.unmount()
+
+
+def test_on_cursor_change_fires_on_backspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Backspace deletes a char and moves the cursor back → callback fires."""
+    offsets: list[int] = []
+    feed: list[bytes] = [b"\x7f"]  # Backspace
+    inst, _ = _mount(
+        TextInput(initial_value="abc", on_cursor_change=offsets.append),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    # Mount → 3; Backspace → 2.
+    assert _wait_for(lambda: offsets == [3, 2])
+    inst.unmount()
+
+
+def test_on_cursor_change_fires_on_home_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Home / End navigation fires the callback."""
+    offsets: list[int] = []
+    feed: list[bytes] = [
+        b"\x1b[H",  # Home → 0
+        b"\x1b[F",  # End → 3
+    ]
+    inst, _ = _mount(
+        TextInput(initial_value="abc", on_cursor_change=offsets.append),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    # Mount → 3; Home → 0; End → 3.
+    assert _wait_for(lambda: offsets == [3, 0, 3])
+    inst.unmount()
+
+
+def test_on_cursor_change_None_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Omitting the callback must not crash the input pipeline."""
+    feed: list[bytes] = [b"a", b"b", b"\x1b[D", b"\x7f"]
+    inst, _ = _mount(
+        TextInput(initial_value="abc"), monkeypatch=monkeypatch, feed=feed
+    )
+    # The component stays alive and the buffer responds to edits.
+    assert _wait_for(lambda: "ab" in _visible(_frame(inst)))
+    inst.unmount()
+
+
+def test_on_cursor_change_reflects_latest_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The callback is held in a ``Ref`` — passing a closure over a list works."""
+    offsets_a: list[int] = []
+    feed: list[bytes] = [b"\x1b[D"]
+    inst, _ = _mount(
+        TextInput(initial_value="abc", on_cursor_change=offsets_a.append),
+        monkeypatch=monkeypatch,
+        feed=feed,
+    )
+    assert _wait_for(lambda: offsets_a == [3, 2])
+    inst.unmount()

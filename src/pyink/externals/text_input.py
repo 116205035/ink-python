@@ -67,7 +67,7 @@ from typing import Any, Literal
 from pyink.components.box import Box
 from pyink.components.text import Text
 from pyink.core.element import Element, create_element
-from pyink.core.signal import Ref, Signal, ref, signal
+from pyink.core.signal import Ref, Signal, effect, ref, signal
 from pyink.hooks.input import use_input
 from pyink.render.ansi import apply_style, parse_color
 from pyink.render.keys import Key
@@ -440,6 +440,7 @@ def _TextInputImpl(**props: Any) -> Element:
     placeholder: str | None = props["placeholder"]
     on_change: Callable[[str], None] | None = props["on_change"]
     on_submit: Callable[[str], None] | None = props["on_submit"]
+    on_cursor_change: Callable[[int], None] | None = props["on_cursor_change"]
     mask: str | None = props["mask"]
     max_length: int | None = props["max_length"]
     color: str | None = props["color"]
@@ -460,8 +461,10 @@ def _TextInputImpl(**props: Any) -> Element:
     # ``.value`` here is enough to redirect future keypresses.
     on_change_ref: Ref[Callable[[str], None] | None] = ref(on_change)
     on_submit_ref: Ref[Callable[[str], None] | None] = ref(on_submit)
+    on_cursor_change_ref: Ref[Callable[[int], None] | None] = ref(on_cursor_change)
     on_change_ref.value = on_change
     on_submit_ref.value = on_submit
+    on_cursor_change_ref.value = on_cursor_change
 
     def _notify_change(old: str, new: str) -> None:
         if new != old:
@@ -831,6 +834,22 @@ def _TextInputImpl(**props: Any) -> Element:
 
     use_input(handle_key, is_active=is_active)
 
+    # Reactive side-effect: fire ``on_cursor_change`` whenever the
+    # internal ``cursor`` signal moves. Subscribing via ``effect`` means
+    # we automatically pick up every code path that writes the cursor —
+    # keyboard navigation, text edits, selection-extension motions, and
+    # programmatic writes from outside — without having to thread a
+    # notify call through every ``_set_cursor`` / ``_splice`` helper.
+    # ``effect`` also fires once on mount with the initial offset; that
+    # mirrors ``on_change``'s "fire on first write" behaviour and lets
+    # callers use the callback to seed their own cursor mirror.
+    def _notify_cursor_change() -> None:
+        cb = on_cursor_change_ref.value
+        if cb is not None:
+            cb(cursor.value)
+
+    effect(_notify_cursor_change)
+
     def _render_lines() -> list[str]:
         """Build a list of per-line rendered strings (with cursor + selection)."""
         cur_value = value.value
@@ -910,12 +929,13 @@ def TextInput(
     placeholder: str | None = None,
     on_change: Callable[[str], None] | None = None,
     on_submit: Callable[[str], None] | None = None,
+    on_cursor_change: Callable[[int], None] | None = None,
     multiline: bool = False,
     mask: str | None = None,
     max_length: int | None = None,
     color: str | None = None,
     cursor_color: str | None = None,
-    cursor_style: CursorStyle = "bar",
+    cursor_style: CursorStyle = "block",
     is_active: bool = True,
     **box_props: Any,
 ) -> Element:
@@ -939,6 +959,18 @@ def TextInput(
         Enter *in single-line mode* (``multiline=False``). In
         ``multiline=True`` Enter inserts a newline instead.
         ``None`` (default) disables submit.
+    on_cursor_change:
+        Called with the absolute cursor offset (a ``int`` in
+        ``[0, len(value)]``) whenever the cursor moves. Fires for
+        keyboard navigation (arrows / Home / End / Ctrl+A/E), text
+        edits that advance the cursor (typing, Backspace, Delete,
+        paste, Ctrl+K/U/W), selection-extension motions, and
+        programmatic writes to the internal ``cursor`` signal. Also
+        fires once on mount with the initial offset (end of
+        ``initial_value``), mirroring ``on_change``'s first-write
+        semantics — this lets the caller seed a cursor mirror without
+        a separate initialisation code path. ``None`` (default)
+        disables the callback.
     multiline:
         When ``True``, Enter inserts a ``\\n`` (multi-line editing);
         ArrowUp / ArrowDown move across lines. When ``False`` (default),
@@ -959,10 +991,11 @@ def TextInput(
         Colour spec applied to the cursor cell. Independent of
         ``color``.
     cursor_style:
-        Cursor visual: ``"bar"`` (default — thin inverse bar between
-        characters, VSCode / vim insert feel), ``"block"`` (inverse
-        video over the cursor character), or ``"underline"`` (underline
-        under the cursor character).
+        Cursor visual: ``"block"`` (default — inverse video *over* the
+        cursor character so the character "lights up", Claude Code /
+        classic terminal feel), ``"bar"`` (thin inverse bar between
+        characters, VSCode / vim insert feel), or ``"underline"``
+        (underline under the cursor character).
     is_active:
         When ``False`` the input ignores all keystrokes. Toggle at
         runtime to switch focus between multiple ``TextInput`` s.
@@ -1009,7 +1042,6 @@ def TextInput(
             TextInput(
                 placeholder="Enter your name...",
                 on_submit=lambda v: print(f"Hello, {v}"),
-                cursor_style="bar",
                 cursor_color="green",
             ),
         )
@@ -1047,6 +1079,7 @@ def TextInput(
         placeholder=placeholder,
         on_change=on_change,
         on_submit=on_submit,
+        on_cursor_change=on_cursor_change,
         mask=mask,
         max_length=max_length,
         color=color,

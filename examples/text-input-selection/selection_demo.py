@@ -68,49 +68,25 @@ def SelectionDemo() -> Element:
 
         # Mirror the buffer + cursor in our own signals so the status
         # line below the input can report live cursor / selection info
-        # without reaching into TextInput's internals.
+        # without reaching into TextInput's internals. The cursor
+        # mirror is fed by ``on_cursor_change`` (the authoritative
+        # source — fires on every cursor move, including arrow /
+        # Home / End / Ctrl+A / Ctrl+E navigation).
         buffer = signal(INITIAL_VALUE)
         cursor_pos = signal(len(INITIAL_VALUE))
 
         def on_change(value: str) -> None:
             buffer.value = value
 
+        def on_cursor_change(offset: int) -> None:
+            cursor_pos.value = offset
+
         def on_key(key: Key) -> None:
+            # Esc exits — everything else (including cursor navigation)
+            # is owned by TextInput.
             if key.escape:
                 app.exit(None)
                 return
-            # We don't drive the selection ourselves — TextInput owns it.
-            # The cursor mirror is best-effort: arrow / Home / End /
-            # Ctrl+A / Ctrl+E move it in ways we can't observe without
-            # re-reading the rendered cursor position, so we just
-            # refresh the snapshot on every keystroke that probably
-            # moved it. This is purely cosmetic (the status line below
-            # is informational; the real cursor lives inside TextInput).
-            if (
-                key.left_arrow
-                or key.right_arrow
-                or key.up_arrow
-                or key.down_arrow
-                or key.home
-                or key.end
-                or key.backspace
-                or key.delete
-            ):
-                # Heuristic: nudge by ±1 / 0 — exact value isn't the
-                # point, the line / column reporting below is.
-                if key.left_arrow or key.backspace:
-                    cursor_pos.value = max(0, cursor_pos.value - 1)
-                elif key.right_arrow:
-                    cursor_pos.value = min(
-                        len(buffer.value), cursor_pos.value + 1
-                    )
-                elif key.up_arrow:
-                    # Cross-line — drop one line's worth of chars.
-                    target = cursor_pos.value - 10
-                    cursor_pos.value = max(0, target)
-                elif key.down_arrow:
-                    target = cursor_pos.value + 10
-                    cursor_pos.value = min(len(buffer.value), target)
 
         use_input(on_key)
 
@@ -135,6 +111,7 @@ def SelectionDemo() -> Element:
                     initial_value=INITIAL_VALUE,
                     multiline=True,
                     on_change=on_change,
+                    on_cursor_change=on_cursor_change,
                     cursor_color="green",
                 ),
                 borderStyle="round",
