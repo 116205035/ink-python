@@ -38,6 +38,7 @@ Controls:
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
 from pyink import (
     Box,
@@ -61,16 +62,21 @@ def _LabeledInput(
     label: str,
     auto_focus: bool,
     hint: str,
-    build_input: Element,
+    build_input: Callable[[Callable[[], bool]], Element],
 ) -> Element:
     """One labelled input row.
 
-    The input element is built by the caller (so this helper stays
-    agnostic to ``multiline`` / ``mask`` / ``placeholder``); this
-    wrapper adds the focus border, the label, and the dimmed hint.
+    ``build_input`` is a factory the caller supplies: it receives an
+    ``is_active`` resolver (a 0-arg callable returning ``bool``) and
+    returns the ``TextInput`` element. The wrapper binds
+    ``is_active`` to :func:`use_focus`'s ``handle.is_focused`` so that
+    only the currently focused input among several receives keystrokes
+    — without this wiring, every mounted ``TextInput`` defaults to
+    ``is_active=True`` and every keypress lands in all of them,
+    corrupting their buffers in lockstep.
 
-    The wrapper reads :func:`use_focus` so the active border tracks the
-    manager's state without re-mounting.
+    The wrapper still adds the focus border, the label, and the dimmed
+    hint. The border tracks ``handle.is_focused`` without re-mounting.
     """
 
     def Impl() -> Element:
@@ -87,7 +93,11 @@ def _LabeledInput(
 
         return Box(
             Text(label, bold=True, color=label_color),
-            build_input,
+            # ``handle.is_focused`` is a ``Signal[bool]``; we pass a
+            # callable instead of the signal itself so ``TextInput``
+            # re-evaluates on every keypress without subscribing to
+            # the signal (imperative dispatch, not reactive).
+            build_input(lambda: handle.is_focused.value),
             Text(hint, dimColor=True),
             flexDirection="column",
             borderStyle=border_style,
@@ -151,28 +161,6 @@ def TextInputDemo() -> Element:
         def _search_submit(v: str) -> None:
             search_submit.value = f"Submitted: {v!r}"
 
-        name_input = TextInput(
-            placeholder="Type your name...",
-            on_change=_name_change,
-            on_submit=_name_submit,
-            cursor_color="green",
-        )
-        notes_input = TextInput(
-            placeholder="Multi-line notes — Enter inserts a newline.",
-            multiline=True,
-            on_change=_notes_change,
-        )
-        password_input = TextInput(
-            placeholder="Password (masked)",
-            mask="*",
-            on_change=_password_change,
-        )
-        search_input = TextInput(
-            placeholder="Press Enter to submit...",
-            on_change=_search_change,
-            on_submit=_search_submit,
-        )
-
         body: Element = focus.wrap(
             Box(
                 _LabeledInput(
@@ -180,28 +168,49 @@ def TextInputDemo() -> Element:
                     label="Single-line",
                     auto_focus=True,
                     hint="Type, then Enter to submit.",
-                    build_input=name_input,
+                    build_input=lambda is_active: TextInput(
+                        placeholder="Type your name...",
+                        on_change=_name_change,
+                        on_submit=_name_submit,
+                        cursor_color="green",
+                        is_active=is_active,
+                    ),
                 ),
                 _LabeledInput(
                     input_id="notes",
                     label="Multi-line",
                     auto_focus=False,
                     hint="Enter inserts a newline; Up/Down cross lines.",
-                    build_input=notes_input,
+                    build_input=lambda is_active: TextInput(
+                        placeholder="Multi-line notes — Enter inserts a newline.",
+                        multiline=True,
+                        on_change=_notes_change,
+                        is_active=is_active,
+                    ),
                 ),
                 _LabeledInput(
                     input_id="password",
                     label="Password",
                     auto_focus=False,
                     hint='mask="*" — characters render as stars.',
-                    build_input=password_input,
+                    build_input=lambda is_active: TextInput(
+                        placeholder="Password (masked)",
+                        mask="*",
+                        on_change=_password_change,
+                        is_active=is_active,
+                    ),
                 ),
                 _LabeledInput(
                     input_id="search",
                     label="Placeholder",
                     auto_focus=False,
                     hint="Type, then Enter to submit.",
-                    build_input=search_input,
+                    build_input=lambda is_active: TextInput(
+                        placeholder="Press Enter to submit...",
+                        on_change=_search_change,
+                        on_submit=_search_submit,
+                        is_active=is_active,
+                    ),
                 ),
                 Text(
                     lambda: f"Active: {focus.active_id or '(none)'}",

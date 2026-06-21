@@ -27,6 +27,7 @@ import pytest
 
 from pyink import Box, Text, render
 from pyink.core.element import Element
+from pyink.core.signal import signal
 from pyink.externals import TextInput
 from pyink.externals.text_input import _TextInputImpl, cursor_column, cursor_line
 from pyink.render import terminal as _term_mod
@@ -2322,4 +2323,230 @@ def test_text_input_column_layout_renders_siblings_on_separate_rows(
         f"rows not in expected order: label={label_row}, "
         f"content={content_row}, hint={hint_row}"
     )
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# is_active as Signal / Callable — dynamic re-evaluation per keypress
+# ---------------------------------------------------------------------------
+
+
+def test_is_active_callable_evaluates_per_keypress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``is_active`` accepts a 0-arg callable; handler re-reads it each key.
+
+    We drive a ``TextInput`` whose ``is_active`` callable is bound to a
+    mutable flag. Using :func:`_patch_input` we feed bytes one at a
+    time on demand: between keystrokes we flip the flag and verify
+    only keystrokes delivered while the flag was ``True`` landed.
+    """
+    state = {"active": True}
+    changes: list[str] = []
+
+    # Demand-driven byte source: ``next_byte`` releases the next chunk
+    # to the input thread. This makes the test fully deterministic —
+    # we control exactly when each key arrives so we can flip the flag
+    # *between* keys.
+    pending: list[bytes] = [b"a", b"b", b"c"]
+    ready = threading.Event()
+    consumed = threading.Event()
+
+    def fake_read(fd: int, n: int) -> bytes:
+        ready.wait()
+        ready.clear()
+        chunk = pending.pop(0)
+        consumed.set()
+        return chunk
+
+    def send(byte: bytes) -> None:
+        pending.append(byte)
+        ready.set()
+        consumed.wait()
+        consumed.clear()
+
+    monkeypatch.setattr(_term_mod, "_read_stdin_chunk", fake_read)
+    monkeypatch.setattr(_term_mod, "_wait_for_input", lambda fd, timeout: True)
+    monkeypatch.setattr(Terminal, "_enter_raw_mode_unix", lambda self: None)
+    monkeypatch.setattr(Terminal, "_exit_raw_mode_unix", lambda self: None)
+    monkeypatch.setattr(Terminal, "_enter_raw_mode_windows", lambda self: None)
+    monkeypatch.setattr(Terminal, "_exit_raw_mode_windows", lambda self: None)
+
+    out = io.StringIO()
+    inst = render(
+        TextInput(
+            initial_value="",
+            is_active=lambda: state["active"],
+            on_change=changes.append,
+        ),
+        stdout=out,
+        stdin=_FakeTTY(),
+        columns=30,
+        rows=3,
+        exit_on_ctrl_c=False,
+    )
+    time.sleep(0.05)
+
+    # Key 1: active → lands.
+    send(b"a")
+    assert _wait_for(lambda: changes == ["a"])
+
+    # Key 2: flip to inactive; key is delivered but ignored.
+    state["active"] = False
+    send(b"b")
+    time.sleep(0.05)
+    assert changes == ["a"]
+
+    # Key 3: still inactive → ignored.
+    send(b"c")
+    time.sleep(0.05)
+    assert changes == ["a"]
+
+    inst.unmount()
+
+
+def test_is_active_signal_evaluates_per_keypress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``is_active`` accepts a ``Signal[bool]`` resolved via ``.value``.
+
+    The handler reads ``.value`` imperatively (without subscribing) on
+    every keypress. Flipping the signal to ``False`` mid-stream must
+    suppress subsequent keystrokes; flipping back to ``True`` must
+    re-enable them.
+    """
+    active = signal(True)
+    changes: list[str] = []
+
+    pending: list[bytes] = [b"a", b"b", b"c"]
+    ready = threading.Event()
+    consumed = threading.Event()
+
+    def fake_read(fd: int, n: int) -> bytes:
+        ready.wait()
+        ready.clear()
+        chunk = pending.pop(0)
+        consumed.set()
+        return chunk
+
+    def send(byte: bytes) -> None:
+        pending.append(byte)
+        ready.set()
+        consumed.wait()
+        consumed.clear()
+
+    monkeypatch.setattr(_term_mod, "_read_stdin_chunk", fake_read)
+    monkeypatch.setattr(_term_mod, "_wait_for_input", lambda fd, timeout: True)
+    monkeypatch.setattr(Terminal, "_enter_raw_mode_unix", lambda self: None)
+    monkeypatch.setattr(Terminal, "_exit_raw_mode_unix", lambda self: None)
+    monkeypatch.setattr(Terminal, "_enter_raw_mode_windows", lambda self: None)
+    monkeypatch.setattr(Terminal, "_exit_raw_mode_windows", lambda self: None)
+
+    out = io.StringIO()
+    inst = render(
+        TextInput(
+            initial_value="",
+            is_active=active,
+            on_change=changes.append,
+        ),
+        stdout=out,
+        stdin=_FakeTTY(),
+        columns=30,
+        rows=3,
+        exit_on_ctrl_c=False,
+    )
+    time.sleep(0.05)
+
+    # Key 1: signal True → lands.
+    send(b"a")
+    assert _wait_for(lambda: changes == ["a"])
+
+    # Key 2: signal False → ignored.
+    active.value = False
+    send(b"b")
+    time.sleep(0.05)
+    assert changes == ["a"]
+
+    # Key 3: signal True again → lands; final buffer is "ac".
+    active.value = True
+    send(b"c")
+    assert _wait_for(lambda: changes == ["a", "ac"])
+
+    inst.unmount()
+
+
+def test_multiple_text_inputs_only_focused_receives_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two ``TextInput`` s in one tree — only the focused one is mutated.
+
+    Reproduces the bug from the wild: with all inputs defaulting to
+    ``is_active=True`` a single keystroke mutated every input in
+    lockstep. The fix lets each input's ``is_active`` callable gate
+    dispatch independently. We mount two inputs whose ``is_active``
+    callables read from a shared ``focus`` value, flip the value
+    between keystrokes, and assert only the active input's buffer
+    changed.
+    """
+    focus = signal("a")
+    a_changes: list[str] = []
+    b_changes: list[str] = []
+
+    pending: list[bytes] = [b"x", b"y"]
+    ready = threading.Event()
+    consumed = threading.Event()
+
+    def fake_read(fd: int, n: int) -> bytes:
+        ready.wait()
+        ready.clear()
+        chunk = pending.pop(0)
+        consumed.set()
+        return chunk
+
+    def send(byte: bytes) -> None:
+        pending.append(byte)
+        ready.set()
+        consumed.wait()
+        consumed.clear()
+
+    monkeypatch.setattr(_term_mod, "_read_stdin_chunk", fake_read)
+    monkeypatch.setattr(_term_mod, "_wait_for_input", lambda fd, timeout: True)
+    monkeypatch.setattr(Terminal, "_enter_raw_mode_unix", lambda self: None)
+    monkeypatch.setattr(Terminal, "_exit_raw_mode_unix", lambda self: None)
+    monkeypatch.setattr(Terminal, "_enter_raw_mode_windows", lambda self: None)
+    monkeypatch.setattr(Terminal, "_exit_raw_mode_windows", lambda self: None)
+
+    out = io.StringIO()
+    inst = render(
+        Box(
+            TextInput(
+                is_active=lambda: focus.value == "a",
+                on_change=a_changes.append,
+            ),
+            TextInput(
+                is_active=lambda: focus.value == "b",
+                on_change=b_changes.append,
+            ),
+            flexDirection="column",
+        ),
+        stdout=out,
+        stdin=_FakeTTY(),
+        columns=30,
+        rows=6,
+        exit_on_ctrl_c=False,
+    )
+    time.sleep(0.05)
+
+    # Key "x": focus is "a" → lands in input A only.
+    send(b"x")
+    assert _wait_for(lambda: a_changes == ["x"])
+    assert b_changes == []
+
+    # Switch focus to B; key "y" lands in B only.
+    focus.value = "b"
+    send(b"y")
+    assert _wait_for(lambda: b_changes == ["y"])
+    assert a_changes == ["x"]
+    assert b_changes == ["y"]
+
     inst.unmount()

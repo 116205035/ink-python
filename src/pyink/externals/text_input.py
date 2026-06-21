@@ -83,6 +83,32 @@ __all__ = [
 #: Allowed values for the ``cursor_style`` prop.
 CursorStyle = Literal["bar", "block", "underline"]
 
+
+def _resolve_is_active(is_active: object) -> bool:
+    """Evaluate an ``is_active`` prop value into a plain ``bool``.
+
+    Accepts three shapes:
+
+    * :class:`Signal` — read ``.value`` *without* subscribing so the
+      input handler closure is not tied to the signal's reactivity
+      (keystroke dispatch must stay imperative).
+    * 0-arg callable — invoked.
+    * anything else — coerced via ``bool(...)``.
+
+    Order matters: ``Signal`` objects are callable (``.value`` is a
+    ``@property``), so the ``isinstance(..., Signal)`` branch must come
+    before the ``callable(...)`` branch — otherwise a signal would be
+    treated as a generic callable and we'd silently read ``.value`` via
+    attribute access (which still works), but the intent of the branch
+    ordering is to make the dispatch explicit and future-proof against
+    subclasses adding ``__call__``.
+    """
+    if isinstance(is_active, Signal):
+        return bool(is_active.value)
+    if callable(is_active):
+        return bool(is_active())
+    return bool(is_active)
+
 #: SGR "inverse video" sequence — used by ``bar`` / ``block`` cursors and
 #: by selection rendering.
 _SGR_INVERSE = "\x1b[7m"
@@ -687,7 +713,13 @@ def _TextInputImpl(**props: Any) -> Element:
     color: str | None = props["color"]
     cursor_color: str | None = props["cursor_color"]
     cursor_style: CursorStyle = props["cursor_style"]
-    is_active: bool = props["is_active"]
+    # ``is_active`` may be a ``bool``, a ``Signal[bool]``, or a 0-arg
+    # callable returning ``bool``. We re-evaluate it on every keypress
+    # inside :func:`handle_key` so the caller can swap focus dynamically
+    # (e.g. ``is_active=lambda: handle.is_focused.value``) without
+    # re-mounting the component. ``use_input`` is always subscribed
+    # (``is_active=True``) and ``handle_key`` filters out inactive keys.
+    is_active: object = props["is_active"]
     multiline: bool = props["multiline"]
     box_props: dict[str, Any] = props["box_props"]
 
@@ -802,7 +834,7 @@ def _TextInputImpl(**props: Any) -> Element:
         return True
 
     def handle_key(key: Key) -> None:
-        if not is_active:
+        if not _resolve_is_active(is_active):
             return
 
         old_value = value.value
@@ -1073,7 +1105,12 @@ def _TextInputImpl(**props: Any) -> Element:
                 new_cursor=new_cursor,
             )
 
-    use_input(handle_key, is_active=is_active)
+    # Always subscribe the input handler; ``handle_key`` re-evaluates
+    # ``is_active`` per keypress so the caller can flip it via a Signal
+    # or callable without unmount/remount. ``use_input``'s own
+    # ``is_active`` is kept ``True`` for backward compatibility (the
+    # hook only supports a mount-time ``bool``).
+    use_input(handle_key, is_active=True)
 
     # Reactive side-effect: fire ``on_cursor_change`` whenever the
     # internal ``cursor`` signal moves. Subscribing via ``effect`` means
@@ -1203,7 +1240,7 @@ def TextInput(
     color: str | None = None,
     cursor_color: str | None = None,
     cursor_style: CursorStyle = "block",
-    is_active: bool = True,
+    is_active: bool | Signal[bool] | Callable[[], bool] = True,
     **box_props: Any,
 ) -> Element:
     """Create a single-line or multi-line text input.
@@ -1264,8 +1301,24 @@ def TextInput(
         characters, VSCode / vim insert feel), or ``"underline"``
         (underline under the cursor character).
     is_active:
-        When ``False`` the input ignores all keystrokes. Toggle at
-        runtime to switch focus between multiple ``TextInput`` s.
+        Controls whether the input accepts keystrokes. Accepts three
+        shapes:
+
+        * ``bool`` — fixed at mount time. ``False`` makes the input
+          ignore every keystroke (handy for disabling an input
+          permanently or based on a one-shot condition known at mount).
+        * ``Signal[bool]`` — re-evaluated on every keypress via
+          ``.value`` (without subscribing, so the input handler closure
+          is not tied to the signal's reactivity).
+        * ``Callable[[], bool]`` — re-evaluated on every keypress. The
+          canonical use case is wiring focus into the component:
+          ``is_active=lambda: handle.is_focused.value`` so only the
+          focused input among several receives keystrokes.
+
+        The underlying ``use_input`` subscription is always live
+        (``is_active=True``); ``handle_key`` filters out keystrokes
+        whenever the resolved value is false. This keeps the dispatch
+        overhead flat regardless of which shape the caller picked.
     **box_props:
         Forwarded to the wrapping :func:`Box` (``padding``,
         ``borderStyle``, ``width``, …).
