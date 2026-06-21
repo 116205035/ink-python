@@ -184,6 +184,11 @@ def TextInputDemo() -> Element:
                     build_input=lambda is_active: TextInput(
                         placeholder="Multi-line notes — Enter inserts a newline.",
                         multiline=True,
+                        # Cap the visible height at 5 rows; the input grows
+                        # to 5 rows then scrolls to follow the cursor so the
+                        # last line stays in view (and never squeezes the
+                        # sibling inputs by growing without bound).
+                        rows=5,
                         on_change=_notes_change,
                         is_active=is_active,
                     ),

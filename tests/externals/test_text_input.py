@@ -997,6 +997,130 @@ def test_multiline_renders_each_line_on_its_own_row(
 
 
 # ---------------------------------------------------------------------------
+# rows — multi-line scroll viewport (scroll-to-cursor)
+# ---------------------------------------------------------------------------
+
+
+def test_rows_viewport_scrolls_to_cursor_at_bottom(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``rows``-bounded multi-line input shows the *last* ``rows`` lines.
+
+    With the cursor at the end of a 6-line buffer and a 3-row viewport,
+    only the bottom three lines (and the cursor) are visible; the top
+    three scroll out of view. Regression for the "multi-line input grows
+    past the available height and the cursor disappears off the bottom"
+    report — the layout's height truncation keeps the *top* lines, so
+    without scroll-to-cursor the last line (where the cursor sits) is the
+    one that gets clipped.
+    """
+    inst, _ = _mount(
+        TextInput(
+            initial_value="AAA\nBBB\nCCC\nDDD\nEEE\nFFF",
+            multiline=True,
+            rows=3,
+        ),
+        monkeypatch=monkeypatch,
+        columns=20,
+        rows=12,
+    )
+    assert _wait_for(lambda: "FFF" in _visible(_frame(inst)))
+    vis = _visible(_frame(inst))
+    # Bottom three lines visible (cursor sits on the last one).
+    assert "DDD" in vis and "EEE" in vis and "FFF" in vis
+    # Top three scrolled out of view.
+    assert "AAA" not in vis and "BBB" not in vis and "CCC" not in vis
+    inst.unmount()
+
+
+def test_rows_viewport_follows_cursor_upward(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Moving the cursor above the viewport scrolls the window up.
+
+    Starting at the bottom of a 6-line buffer with a 3-row viewport, four
+    ArrowUp presses move the cursor onto the second line; the window must
+    scroll up to keep that line visible, revealing the top lines and
+    hiding the bottom ones.
+    """
+    feed: list[bytes] = [b"\x1b[A", b"\x1b[A", b"\x1b[A", b"\x1b[A"]
+    inst, _ = _mount(
+        TextInput(
+            initial_value="AAA\nBBB\nCCC\nDDD\nEEE\nFFF",
+            multiline=True,
+            rows=3,
+        ),
+        monkeypatch=monkeypatch,
+        feed=feed,
+        columns=20,
+        rows=12,
+    )
+    # Cursor walked up to line index 1 ("BBB"); the window now starts at
+    # the top so "AAA"/"BBB" are visible and the bottom "FFF" is hidden.
+    assert _wait_for(
+        lambda: "BBB" in _visible(_frame(inst))
+        and "FFF" not in _visible(_frame(inst))
+    )
+    inst.unmount()
+
+
+def test_rows_unset_shows_all_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without ``rows`` the multi-line input grows to show every line."""
+    inst, _ = _mount(
+        TextInput(
+            initial_value="AAA\nBBB\nCCC\nDDD\nEEE\nFFF",
+            multiline=True,
+        ),
+        monkeypatch=monkeypatch,
+        columns=20,
+        rows=12,
+    )
+    assert _wait_for(lambda: "FFF" in _visible(_frame(inst)))
+    vis = _visible(_frame(inst))
+    assert all(tok in vis for tok in ("AAA", "BBB", "CCC", "DDD", "EEE", "FFF"))
+    inst.unmount()
+
+
+def test_rows_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="rows"):
+        TextInput(rows=0)
+
+
+def test_height_bounded_box_keeps_cursor_visible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the input box is shrunk below the buffer's line count, the
+    layout's cursor-aware vertical clip keeps the cursor row on screen.
+
+    Regression for "the multi-line cursor can only reach line 4": when a
+    tight column shrinks the input box, the layout granted the text leaf
+    fewer rows than the buffer had lines and the top-keeping clip dropped
+    the bottom line the cursor sat on. The box here is pinned to 3 rows
+    while the buffer has 6 lines (cursor at the end on the last line), so
+    the bottom three lines — including the cursor — must be the ones that
+    survive.
+    """
+    inst, _ = _mount(
+        TextInput(
+            initial_value="AAA\nBBB\nCCC\nDDD\nEEE\nFFF",
+            multiline=True,
+            height=3,
+        ),
+        monkeypatch=monkeypatch,
+        columns=20,
+        rows=12,
+    )
+    assert _wait_for(lambda: "FFF" in _visible(_frame(inst)))
+    vis = _visible(_frame(inst))
+    assert "DDD" in vis and "EEE" in vis and "FFF" in vis
+    assert "AAA" not in vis and "BBB" not in vis and "CCC" not in vis
+    # The cursor cell (inverse-video block) must be painted on a visible
+    # row, not clipped off the bottom.
+    assert "\x1b[7m" in _frame(inst)
+    inst.unmount()
+
+
+# ---------------------------------------------------------------------------
 # ArrowUp / ArrowDown — cross-line navigation
 # ---------------------------------------------------------------------------
 

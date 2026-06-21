@@ -305,11 +305,50 @@ def _paint_text(
     """
     text = node.content or ""
     raw_lines = text.split("\n")
-    if node.height > 0:
-        raw_lines = raw_lines[: node.height]
+    if node.height > 0 and len(raw_lines) > node.height:
+        raw_lines = _clip_lines_to_height(raw_lines, node.height, node.props)
     for i, raw_line in enumerate(raw_lines):
         styled = _apply_text_style(raw_line, node.props, inherited_bg=inherited_bg)
         grid.put(abs_x, abs_y + i, styled)
+
+
+def _clip_lines_to_height(
+    lines: list[str], height: int, props: dict[str, Any]
+) -> list[str]:
+    """Clip ``lines`` to ``height`` rows, keeping a focal line visible.
+
+    The default policy keeps the *leading* ``height`` lines (matches
+    ink's ``<Box height={n}>`` truncation). A text leaf may opt into
+    cursor-aware clipping by carrying a ``_pyink_scroll`` prop — a
+    mutable mapping whose ``"cursor_row"`` entry is the 0-based index of
+    the line the caller wants to keep on screen. When present and the
+    content overflows ``height``, we slide a ``height``-tall window so
+    that focal row stays visible (scroll-to-cursor). This is what lets a
+    multi-line :func:`pyink.externals.TextInput` keep its cursor in view
+    when the surrounding layout grants the leaf fewer rows than the
+    buffer has lines — without it the top-keeping clip would drop the
+    bottom line the cursor sits on, so the cursor "disappears" past the
+    last visible row and only re-appears after scrolling back up.
+
+    The prop is a live mapping (not a static value) because PyInk
+    function components run once at mount: the cursor row changes on
+    every keystroke, so ``TextInput`` updates the shared mapping inside
+    its render callable and the layout reads the current value here.
+    """
+    scroll = props.get("_pyink_scroll")
+    cursor_row: int | None = None
+    if isinstance(scroll, dict):
+        raw = scroll.get("cursor_row")
+        if isinstance(raw, int):
+            cursor_row = raw
+    if cursor_row is None:
+        return lines[:height]
+    # Slide a ``height``-tall window that contains ``cursor_row``.
+    start = 0
+    if cursor_row >= height:
+        start = cursor_row - height + 1
+    start = max(0, min(start, len(lines) - height))
+    return lines[start : start + height]
 
 
 def _apply_text_style(

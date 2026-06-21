@@ -882,6 +882,21 @@ def _layout_node(
                 node.text = str(rendered) if rendered is not None else ""
                 node.original_text = node.text
                 node.props["_rendered_width"] = ctx_width
+                # The freshly produced text supersedes whatever the wrap
+                # pass cached on a previous layout pass. ``_wrapped_width``
+                # records "node.text has already been wrapped to width W";
+                # that invariant only holds while ``node.text`` stays the
+                # wrapped output. Re-running the renderer overwrites
+                # ``node.text`` with the *unwrapped* source, so the stale
+                # ``_wrapped_width`` must be cleared — otherwise the wrap
+                # guard below (which skips re-wrapping unless the new width
+                # is strictly tighter than ``_wrapped_width``) keeps the
+                # full-width text whenever a later pass widens the
+                # constraint, letting long single-line content overflow the
+                # container (Bug: ``truncate-end`` status line poking past
+                # the right border after the renderer re-ran at a wider
+                # measurement width).
+                node.props.pop("_wrapped_width", None)
         # Re-wrap from the **original** source text — but only when the
         # current ``max_w_for_text`` is *tighter* than any width we've
         # already wrapped to. The flex engine re-lays-out children

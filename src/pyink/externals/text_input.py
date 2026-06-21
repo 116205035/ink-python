@@ -721,6 +721,7 @@ def _TextInputImpl(**props: Any) -> Element:
     # (``is_active=True``) and ``handle_key`` filters out inactive keys.
     is_active: object = props["is_active"]
     multiline: bool = props["multiline"]
+    rows: int | None = props["rows"]
     box_props: dict[str, Any] = props["box_props"]
 
     # Initial cursor sits at end of the initial value — matches
@@ -1128,6 +1129,15 @@ def _TextInputImpl(**props: Any) -> Element:
 
     effect(_notify_cursor_change)
 
+    # Live scroll state shared with the layout's text painter. PyInk
+    # function components run once at mount, so a static prop can't track
+    # the cursor as it moves; this mutable mapping is updated inside
+    # :func:`_render_lines` on every paint and read by the layout's
+    # cursor-aware vertical clip (``_clip_lines_to_height``) so the
+    # cursor row stays visible even when the surrounding layout grants
+    # the text leaf fewer rows than the viewport holds.
+    scroll_state: dict[str, int] = {"cursor_row": 0}
+
     def _render_lines() -> list[str]:
         """Build a list of per-line rendered strings (with cursor + selection)."""
         cur_value = value.value
@@ -1141,6 +1151,7 @@ def _TextInputImpl(**props: Any) -> Element:
             cursor_cell = _cursor_cell(
                 cursor_style, char="", cursor_color=cursor_color
             )
+            scroll_state["cursor_row"] = 0
             return [apply_style(placeholder, dimColor=True) + cursor_cell]
 
         # Width available for per-line truncation. We pre-truncate each
@@ -1194,6 +1205,37 @@ def _TextInputImpl(**props: Any) -> Element:
                     cursor_visible_width=cursor_cell_width,
                 )
             lines.append(rendered)
+
+        # Vertical viewport (multi-line scroll-to-cursor). When ``rows``
+        # is set and the buffer has more rendered lines than the viewport
+        # height, emit only a window of ``rows`` lines that always
+        # contains the cursor line. As the user adds lines at the bottom
+        # the window tracks the cursor downward, so the last line (and the
+        # cursor sitting on it) stays visible instead of being clipped off
+        # the bottom by the layout's height truncation — which keeps the
+        # *top* lines and drops the bottom ones, hiding the cursor (Bug:
+        # multi-line input grows past the available height, the cursor
+        # disappears and only ArrowUp brings it back into view).
+        #
+        # ``rows`` acts as a *maximum*: a buffer with fewer lines than
+        # ``rows`` still grows naturally (1 row → ``rows`` rows), so the
+        # box only stops growing once the content would overflow the
+        # viewport. Emitting exactly ``rows`` lines also bounds the
+        # Text node's height, so the surrounding Box never expands past
+        # the viewport and never squeezes its siblings.
+        cur_line = cursor_line(cur_value, cur_cursor)
+        if rows is not None and rows >= 1 and len(lines) > rows:
+            start = 0
+            if cur_line >= rows:
+                start = cur_line - rows + 1
+            start = max(0, min(start, len(lines) - rows))
+            lines = lines[start : start + rows]
+            cur_line -= start
+        # Report the cursor's row *within the emitted window* so the
+        # layout's height clip can keep it on screen if it grants the
+        # leaf fewer rows than we emitted (e.g. a tight column shrinks
+        # the input box below ``rows``).
+        scroll_state["cursor_row"] = max(0, min(cur_line, len(lines) - 1))
         return lines
 
     def render_text() -> str:
@@ -1222,7 +1264,12 @@ def _TextInputImpl(**props: Any) -> Element:
     # budget. For multi-line buffers the wrap engine preserves the
     # embedded newlines, so the Box still grows to N rows.
     return Box(
-        Text(render_text, color=color, wrap="truncate-end"),
+        Text(
+            render_text,
+            color=color,
+            wrap="truncate-end",
+            _pyink_scroll=scroll_state,
+        ),
         **box_props,
     )
 
@@ -1235,6 +1282,7 @@ def TextInput(
     on_submit: Callable[[str], None] | None = None,
     on_cursor_change: Callable[[int], None] | None = None,
     multiline: bool = False,
+    rows: int | None = None,
     mask: str | None = None,
     max_length: int | None = None,
     color: str | None = None,
@@ -1279,6 +1327,17 @@ def TextInput(
         When ``True``, Enter inserts a ``\\n`` (multi-line editing);
         ArrowUp / ArrowDown move across lines. When ``False`` (default),
         Enter triggers :attr:`on_submit` and the input stays single-line.
+    rows:
+        Maximum number of text rows the (multi-line) input shows at
+        once — its scroll viewport height. ``None`` (default) lets the
+        input grow without bound, matching the historic behaviour. When
+        set, the input grows from one row up to ``rows`` rows and then
+        *scrolls* to follow the cursor: the visible window always
+        contains the cursor line, so the last line you type stays in
+        view instead of being clipped off the bottom by the surrounding
+        layout's height budget. Bounding the height this way also keeps
+        a tall buffer from squeezing sibling elements. Ignored for
+        single-line inputs (which are always one row).
     mask:
         When set, every visible character is replaced by this string
         (password mode). E.g. ``mask="*"`` renders ``"secret"`` as
@@ -1388,6 +1447,9 @@ def TextInput(
     if max_length is not None and max_length < 0:
         raise ValueError(f"max_length must be >= 0, got {max_length}")
 
+    if rows is not None and rows < 1:
+        raise ValueError(f"rows must be >= 1, got {rows}")
+
     # Clip the initial value to ``max_length`` so the buffer never
     # starts out over-budget. Matches ink-text-input's behaviour.
     if max_length is not None and len(initial_value) > max_length:
@@ -1407,5 +1469,6 @@ def TextInput(
         cursor_style=cursor_style,
         is_active=is_active,
         multiline=multiline,
+        rows=rows,
         box_props=box_props,
     )

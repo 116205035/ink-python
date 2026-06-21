@@ -910,6 +910,86 @@ def test_long_text_in_flex_grow_box_wraps_to_final_width() -> None:
     assert len(text_lines) >= 2
 
 
+def test_callable_truncate_text_refits_after_renderer_rerun() -> None:
+    """A ``truncate-end`` callable text leaf must stay within the final
+    width even when the layout engine re-runs its renderer at a *wider*
+    measurement width on an intermediate pass.
+
+    Regression for the demo's "Submitted: ..." status line poking past
+    the right border: the multi-pass flex engine fed the text leaf a
+    sequence of widths (e.g. 68 → 72 → 68). The first pass wrapped to 68
+    and recorded ``_wrapped_width=68``; the 72-wide pass re-ran the
+    deferred renderer (because the measurement width changed), which
+    reset ``node.text`` back to the *unwrapped* source — and the wrap
+    guard then refused to re-truncate because 72 was not *tighter* than
+    the stale ``_wrapped_width=68``. The unwrapped full-width line
+    survived into the final paint and overflowed the container. The fix
+    invalidates ``_wrapped_width`` whenever the renderer regenerates the
+    text so the guard can re-truncate to the current width.
+    """
+    long_line = (
+        "Submitted: 'asasdwe qwe qwe          asd af         "
+        "we qe qwe qwe qweqe qwe more text here to overflow really long line'"
+    )
+
+    # A sibling whose intrinsic content is *wider* than the container
+    # forces the flex engine through a shrink pass, so the text leaf is
+    # measured at oscillating widths across passes (e.g. wide → final).
+    # That width change re-runs the callable renderer (resetting
+    # ``node.text`` to the unwrapped source) and is exactly the condition
+    # that exposed the stale ``_wrapped_width`` guard.
+    tree = box(
+        box(
+            box(text("x" * 80), borderStyle="single", paddingX=1),
+            text(lambda: long_line, wrap="truncate-end"),
+            flexDirection="column",
+        ),
+        flexDirection="column",
+        padding=1,
+        borderStyle="round",
+        width=60,
+    )
+    out = render_to_string(tree)
+    for line in out.split("\n"):
+        assert len(line) <= 60, f"row exceeded container width (60): {line!r}"
+
+
+def test_clip_lines_to_height_keeps_cursor_row_visible() -> None:
+    """``_clip_lines_to_height`` slides its window to keep the cursor row.
+
+    Default (no ``_pyink_scroll`` prop) keeps the leading rows — matching
+    ink's ``<Box height={n}>`` truncation. When a live ``_pyink_scroll``
+    mapping carries a ``cursor_row`` the clip windows around it instead,
+    so a multi-line ``TextInput`` whose box was shrunk below its viewport
+    still shows the row the cursor sits on (Regression: cursor on the
+    last line vanished because the top-keeping clip dropped the bottom
+    rows).
+    """
+    from pyink.layout.render_layout import _clip_lines_to_height
+
+    lines = ["L0", "L1", "L2", "L3", "L4", "L5"]
+    # No scroll prop → leading rows.
+    assert _clip_lines_to_height(lines, 3, {}) == ["L0", "L1", "L2"]
+    # Cursor on the last row → window slides to the bottom.
+    assert _clip_lines_to_height(lines, 3, {"_pyink_scroll": {"cursor_row": 5}}) == [
+        "L3",
+        "L4",
+        "L5",
+    ]
+    # Cursor in the leading window → no slide needed.
+    assert _clip_lines_to_height(lines, 3, {"_pyink_scroll": {"cursor_row": 1}}) == [
+        "L0",
+        "L1",
+        "L2",
+    ]
+    # Cursor in the middle → centred-ish window that still contains it.
+    assert _clip_lines_to_height(lines, 3, {"_pyink_scroll": {"cursor_row": 3}}) == [
+        "L1",
+        "L2",
+        "L3",
+    ]
+
+
 def test_container_too_small_for_children_shrinks() -> None:
     """Width 4 holds two 3-cell children only via shrink.
 
