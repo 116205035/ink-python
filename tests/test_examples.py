@@ -447,6 +447,9 @@ def test_counter_unmount_is_idempotent_after_run() -> None:
         "select-input-real/select_input_demo.py",
         "select-input-multi/multi_select_demo.py",
         "confirm-input/confirm_demo.py",
+        "virtual-list/virtual_list_demo.py",
+        "virtual-list-dynamic/dynamic_demo.py",
+        "scroll-text/scroll_text_demo.py",
     ],
 )
 def test_example_file_exists(rel_path: str) -> None:
@@ -708,4 +711,65 @@ def test_confirm_input_example_runs() -> None:
     assert "abort" in out
     # Each prompt's status line starts in its initial state.
     assert out.count("no action yet") >= 3
+    assert "\x1b[2J" not in out
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 PR3 — VirtualList + Text.scroll_offset examples. The windowed
+# list renders only the visible slice; the status lines confirm the
+# mount reached the keyboard handler wiring.
+# ---------------------------------------------------------------------------
+
+
+def test_virtual_list_example_runs() -> None:
+    """VirtualList example mounts + paints the visible slice + status line."""
+    mod = _load_example_module(
+        "virtual-list/virtual_list_demo.py",
+        "pyink_example_virtual_list",
+    )
+    out = _run_example(
+        mod.VirtualListDemo(), columns=60, rows=18, run_seconds=0.3
+    )
+    assert "VirtualList demo" in out
+    # The first item (``Item 0``) sits at the top of the viewport on
+    # mount; the surrounding slice renders ``Item 0``..``Item 12`` (10
+    # viewport + 2*3 overscan, clamped by the item count). The landmark
+    # ``Item`` substring is always present.
+    assert "Item 0" in out
+    # ``Top index`` is the demo's status line reporting scroll_signal.
+    assert "Top index" in out
+    assert "\x1b[2J" not in out
+
+
+def test_virtual_list_dynamic_example_runs() -> None:
+    """Dynamic VirtualList example mounts + appends items via Signal[list]."""
+    mod = _load_example_module(
+        "virtual-list-dynamic/dynamic_demo.py",
+        "pyink_example_virtual_list_dynamic",
+    )
+    out = _run_example(
+        mod.DynamicDemo(), columns=70, rows=18, run_seconds=0.6
+    )
+    assert "VirtualList dynamic demo" in out
+    # The status line reports the running item total. After 600 ms at
+    # 200 ms / append we expect ~3 items; the substring ``Total:`` is
+    # always present regardless of timing.
+    assert "Total:" in out
+    assert "\x1b[2J" not in out
+
+
+def test_scroll_text_example_runs() -> None:
+    """Text.scroll_offset example mounts + paints the first slice + status."""
+    mod = _load_example_module(
+        "scroll-text/scroll_text_demo.py",
+        "pyink_example_scroll_text",
+    )
+    out = _run_example(
+        mod.ScrollTextDemo(), columns=50, rows=18, run_seconds=0.3
+    )
+    assert "Text.scroll_offset demo" in out
+    # The first line of the payload (``Line 00``) is visible on mount.
+    assert "Line 00" in out
+    # The status line reports the current offset; initial value is 0.
+    assert "scroll_offset: 0/" in out
     assert "\x1b[2J" not in out

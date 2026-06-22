@@ -262,14 +262,19 @@ def main() -> int:
     # leaving ``columns`` / ``rows`` unset. Hard-coding a fixed viewport
     # (the demo previously forced ``columns=72, rows=30``) is the root
     # cause of the "garbled borders / inputs on a short terminal" bug:
-    # when the real terminal is shorter (or narrower) than the forced
-    # size, the oversized frame overflows the screen, the terminal
-    # scrolls, and the inline repaint's relative cursor-up math (which
-    # assumes every painted row is still on-screen) lands on the wrong
-    # rows — corrupting every subsequent frame. Sizing the frame to the
-    # actual terminal keeps the frame within the screen, so the hardened
-    # layout simply clips the lowest-priority rows cleanly instead of
-    # spilling past the viewport.
+    # when the real terminal is shorter than the forced size, the
+    # oversized frame overflows the screen, the terminal scrolls, and the
+    # inline repaint's relative cursor-up math (which assumes every
+    # painted row is still on-screen) lands on the wrong rows —
+    # corrupting every subsequent frame.
+    #
+    # Sizing the frame to the real terminal keeps the whole frame on
+    # screen (no scroll, no repaint desync). The demo content is taller
+    # than a short terminal, so the body is wrapped in a fixed-height
+    # *scroll viewport* (see ``TextInputDemo``): the viewport clips to the
+    # available rows and auto-scrolls to keep the focused input visible,
+    # so every input is reachable by Tab-cycling focus even when the
+    # terminal cannot show them all at once.
     inst = render(TextInputDemo())
     try:
         inst.wait_until_exit()

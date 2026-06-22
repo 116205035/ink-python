@@ -237,6 +237,16 @@ class FlexStyle:
 
 
 def _int_or_none(v: Any) -> int | None:
+    # PRD Decision 13 / Phase 5: dimension + box-model props
+    # (``width`` / ``height`` / ``minWidth`` / … and every margin /
+    # padding edge, which all funnel through here) accept a
+    # ``Signal`` / ``Callable[[], int]`` in addition to a plain int —
+    # the unwrap happens at layout time so the render-loop effect
+    # subscribes to any signal read here. This is what lets a component
+    # drive a reactive ``marginTop`` (e.g. a scroll offset) or a
+    # reactive ``height`` (e.g. a resize-aware viewport) the same way
+    # ``borderStyle`` / ``color`` already support callables.
+    v = _resolve(v)
     if v is None:
         return None
     if isinstance(v, str):
