@@ -341,6 +341,15 @@ class FlexNode:
     # sequence is also what enables ``Instance.unmount`` to detect "the
     # element is gone" by leaving the ref at ``None``.
     ref: Any = None
+    # Bug 1 (PR2): minimum main-axis content size. Acts like CSS flex's
+    # ``min-height: auto`` / ``min-width: auto`` (default: min-content).
+    # Shrink distribution clamps each child's main-axis allocation to at
+    # least this value so a text leaf can never be compressed below a
+    # single row / column (which would otherwise cause sibling overlap
+    # when the leaf paints at height 0 but still draws its content).
+    # Text leaves are ``1``; box containers recursively aggregate their
+    # children's min-content (see :func:`_compute_min_content_main`).
+    min_content_main: int = 1
 
 
 @dataclass(slots=True)
@@ -945,6 +954,8 @@ def _layout_node(
                 h = min(h, max(0, style.max_height - style.padding.vertical))
         node.layout_width = (w if own_w < 0 else own_w) + style.padding.horizontal
         node.layout_height = (h if own_h < 0 else own_h) + style.padding.vertical
+        # Text leaf: min-content is 1 main-axis unit (never compresses to 0).
+        _compute_min_content_main(node)
         return
 
     # ----- 3. Container: lay out children -----
@@ -963,6 +974,8 @@ def _layout_node(
                 empty_h = min(empty_h, max(0, style.max_height - style.padding.vertical))
         node.layout_width = empty_w + style.padding.horizontal
         node.layout_height = empty_h + style.padding.vertical
+        # Empty container: min-content collapses to its own padding band.
+        _compute_min_content_main(node)
         return
 
     if style.is_column():
@@ -982,6 +995,11 @@ def _layout_node(
         node.layout_height = max(node.layout_height, style.min_height)
     if own_h < 0 and style.max_height is not None:
         node.layout_height = min(node.layout_height, max(0, style.max_height))
+
+    # Aggregate the children's min-content (already populated by the
+    # recursive calls above) into this container's ``min_content_main``
+    # so its own parent's shrink pass has a floor to clamp against.
+    _compute_min_content_main(node)
 
 
 def _resolve_child_main_basis(child: FlexNode, parent_is_column: bool) -> int:
@@ -1260,13 +1278,73 @@ def _ordered_children(style: FlexStyle, children: list[FlexNode]) -> list[FlexNo
     return list(children)
 
 
+def _compute_min_content_main(node: FlexNode) -> int:
+    """Compute ``node.min_content_main`` from children (recursive).
+
+    Mirrors CSS flex's ``min-height: auto`` / ``min-width: auto`` default
+    (which resolves to min-content):
+
+    * **Text leaf**: fixed at ``1`` (a text leaf occupies at least one
+      row/column, even if its content doesn't fit).
+    * **Box container**: aggregates children's min-content. Along the
+      main axis, a row's min-content is ``max(children min-width)`` (the
+      widest child sets the floor); a column's is ``sum(children
+      min-height)`` (all children stack vertically). Either way the
+      parent's own padding, border (folded into padding by
+      :meth:`FlexStyle.from_props`), and main-axis gaps are added.
+
+    The recursion reads each child's ``min_content_main`` field, which
+    is populated *before* distribution (see :func:`_layout_row` /
+    :func:`_layout_column`). The result is written back to
+    ``node.min_content_main`` so :func:`_distribute_main` can read it
+    uniformly from any parent.
+    """
+    if node.kind == "text":
+        node.min_content_main = 1
+        return 1
+    style = node.style
+    children = node.children
+    if not children:
+        # Empty container — min-content is just its own padding band.
+        node.min_content_main = 0
+        return 0
+    if style.is_column():
+        # Column main axis = vertical → sum child min-heights + gaps.
+        gap = style.row_gap or style.gap
+        inner = sum(c.min_content_main for c in children) + gap * (len(children) - 1)
+    else:
+        # Row main axis = horizontal → max child min-width + gaps.
+        gap = style.column_gap or style.gap
+        inner = (
+            max((c.min_content_main for c in children), default=0)
+            + gap * (len(children) - 1)
+        )
+    # ``style.padding`` already includes the border thickness (PR4 folded
+    # border into padding so layout reserves the cells the renderer fills).
+    padding_axis = (
+        style.padding.vertical if style.is_column() else style.padding.horizontal
+    )
+    total = inner + padding_axis
+    node.min_content_main = total
+    return total
+
+
 def _distribute_main(
     children: list[FlexNode],
     sizes: list[int],
     free: float,
     gap: int,
 ) -> list[int]:
-    """Distribute ``free`` space via grow (positive) or shrink (negative)."""
+    """Distribute ``free`` space via grow (positive) or shrink (negative).
+
+    Shrink is **clamped per child** at ``children[i].min_content_main``
+    so a text leaf can never be compressed below 1 main-axis unit (the
+    classic "0-height row that still paints content → overlap" bug).
+    When early clamping leaves leftover overflow, the remainder is
+    re-distributed across children that still have shrink headroom
+    (size > min_content_main), iterating until either the overflow is
+    fully absorbed or every child is pinned at its min-content floor.
+    """
     n = len(children)
     out = list(sizes)
     if free > 0:
@@ -1289,21 +1367,51 @@ def _distribute_main(
         return out
     if free < 0:
         # Shrink: weighted by flexShrink × main_size (Yoga behaviour).
-        overflow = -free
-        total_weight = 0.0
-        weights = [0.0] * n
-        for i in range(n):
-            sh = children[i].style.flex_shrink
-            if sh > 0 and sizes[i] > 0:
-                weights[i] = sh * sizes[i]
-                total_weight += weights[i]
-        if total_weight <= 0:
-            return out
-        # Scale so all weights sum to overflow.
-        for i in range(n):
-            if weights[i] > 0:
-                shrink_amount = overflow * (weights[i] / total_weight)
-                out[i] = max(0, sizes[i] - int(round(shrink_amount)))
+        # Two-pass: first distribute by weight, then iteratively
+        # redistribute any overflow that couldn't be absorbed because a
+        # child hit its min-content floor.
+        overflow_remaining = -free
+        # Track how much shrink headroom each child still has.
+        # headroom[i] = current_size - min_content_main.
+        headroom = [
+            max(0, out[i] - children[i].min_content_main) for i in range(n)
+        ]
+        # Iteratively absorb overflow across whichever children still
+        # have headroom. Each pass recomputes weights from the current
+        # remaining ``flexShrink × current_size`` so a child that was
+        # already pinned to its floor stops contributing.
+        while overflow_remaining > 0:
+            total_weight = 0.0
+            weights = [0.0] * n
+            for i in range(n):
+                if headroom[i] <= 0:
+                    continue
+                sh = children[i].style.flex_shrink
+                if sh > 0 and out[i] > 0:
+                    weights[i] = sh * out[i]
+                    total_weight += weights[i]
+            if total_weight <= 0:
+                # No shrinkable children left — overflow will escape the
+                # container (PR3's clip-to-content-box will mask it).
+                break
+            absorbed_this_pass = 0
+            for i in range(n):
+                if weights[i] <= 0 or headroom[i] <= 0:
+                    continue
+                share = overflow_remaining * (weights[i] / total_weight)
+                shrink_amount = int(round(share))
+                # Don't shrink past headroom / below min-content.
+                shrink_amount = min(shrink_amount, headroom[i])
+                if shrink_amount <= 0:
+                    continue
+                out[i] -= shrink_amount
+                headroom[i] = max(0, out[i] - children[i].min_content_main)
+                absorbed_this_pass += shrink_amount
+            if absorbed_this_pass == 0:
+                # Rounding collapsed every share to 0 — stop to avoid
+                # an infinite loop.
+                break
+            overflow_remaining -= absorbed_this_pass
         return out
     return out
 

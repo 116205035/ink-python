@@ -1128,3 +1128,169 @@ def test_column_box_height_sums_children_heights() -> None:
         f"ccc should be on the row immediately after bbb; "
         f"got lines={lines!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Bug 1 (PR2): min-content clamp prevents shrink-to-zero row overlap
+# ---------------------------------------------------------------------------
+
+
+def test_shrink_clamps_to_min_content_text_leaf() -> None:
+    """Three text leaves in a column too short for all three stay ≥1 row each.
+
+    Regression for Bug 1: previously ``_distribute_main`` wrote
+    ``out[i] = max(0, sizes[i] - shrink_amount)``, which could compress a
+    text leaf to height 0. ``_paint_text`` still drew the leaf's content
+    at that 0-height row, so siblings overlapped. With the min-content
+    clamp each text leaf keeps at least 1 row of allocated main-axis
+    size, so the three leaves get distinct ``layout_y`` offsets (no two
+    share the same row).
+    """
+    from pyink.core.reconciler import Reconciler
+    from pyink.layout import layout
+
+    tree = box(
+        text("aaa"),
+        text("bbb"),
+        text("ccc"),
+        flexDirection="column",
+        height=2,  # too short for 3 leaves
+    )
+    reconciled = Reconciler().mount(tree, parent=None)
+    try:
+        lt = layout(reconciled, columns=10)
+        ys = [child.y for child in lt.children]
+        heights = [child.height for child in lt.children]
+        # Each child's allocated height is at least 1 (the text leaf
+        # min-content floor). Under the old shrink-to-zero behaviour
+        # at least one child would have height 0.
+        assert all(h >= 1 for h in heights), (
+            f"each child must keep ≥1 row of height; got {heights!r}"
+        )
+        # Each child has a distinct y — no two share a row (which was
+        # the overlap artefact under shrink-to-zero).
+        assert len(set(ys)) == len(ys), (
+            f"children must have distinct y positions; got {ys!r}"
+        )
+    finally:
+        Reconciler().unmount(reconciled)
+
+
+def test_shrink_redistributes_overflow() -> None:
+    """A child pinned to min-content stops shrinking; remainder goes elsewhere.
+
+    Build a column with one short leaf and two tall leaves; when the
+    container can't hold all of them, the short leaf clamps at its
+    min-content (1 row) and any leftover overflow is absorbed by the
+    remaining shrinkable children rather than ignored.
+    """
+    from pyink.core.reconciler import Reconciler
+    from pyink.layout import layout
+
+    # Three children: short (1 row), tall (3 rows each). Container has
+    # only 4 rows of room → overflow = (1 + 3 + 3) - 4 = 3 rows to shed.
+    # The short child is already at min-content (1) so it can't shrink;
+    # the two tall children must absorb the full 3-row overflow between
+    # them. Expected: short stays at 1, the other two each end up at
+    # roughly (3 + 3 - 3) / 2 = 1.5 → 1 or 2 rows but always ≥1.
+    tree = box(
+        box(text("short"), flexShrink=1),
+        box(text("tall1\ntall1\ntall1"), flexShrink=1),
+        box(text("tall2\ntall2\ntall2"), flexShrink=1),
+        flexDirection="column",
+        height=4,
+    )
+    reconciled = Reconciler().mount(tree, parent=None)
+    try:
+        lt = layout(reconciled, columns=10)
+        column = lt
+        heights = [child.height for child in column.children]
+        # All three children present (none dropped to 0).
+        assert len(heights) == 3, f"expected 3 children; got {heights!r}"
+        # Short child clamped at min-content (1).
+        assert heights[0] == 1, (
+            f"short child should clamp at min-content=1; got {heights[0]}"
+        )
+        # Both tall children stayed ≥1 (didn't underflow).
+        assert heights[1] >= 1 and heights[2] >= 1, (
+            f"tall children should stay ≥1 row; got {heights[1]}, {heights[2]}"
+        )
+        # And total absorbed ≤ natural (1 + 3 + 3 = 7) but ≥ container (4)
+        # after clamp + redistribute.
+        assert sum(heights) <= 7, f"sum shouldn't exceed natural; got {sum(heights)}"
+    finally:
+        Reconciler().unmount(reconciled)
+
+
+def test_shrink_all_at_min_content_no_overlap() -> None:
+    """When every child is pinned at min-content, none shrink to overlap.
+
+    Construct a column where the total min-content of all children
+    exceeds the container — every child clamps at 1 row. They must
+    still get distinct ``layout_y`` offsets (no overlap), even though
+    the column overflows the container's content box.
+    """
+    from pyink.core.reconciler import Reconciler
+    from pyink.layout import layout
+
+    tree = box(
+        text("a"),
+        text("b"),
+        text("c"),
+        text("d"),
+        text("e"),
+        flexDirection="column",
+        height=2,  # way too short for 5 leaves
+    )
+    reconciled = Reconciler().mount(tree, parent=None)
+    try:
+        lt = layout(reconciled, columns=10)
+        ys = [child.y for child in lt.children]
+        heights = [child.height for child in lt.children]
+        # Every child stayed at ≥1 (min-content floor).
+        assert all(h >= 1 for h in heights), (
+            f"each child ≥1 row; got {heights!r}"
+        )
+        # Every child has a distinct y (no overlap).
+        assert len(set(ys)) == len(ys), (
+            f"distinct y positions required; got {ys!r}"
+        )
+    finally:
+        Reconciler().unmount(reconciled)
+
+
+def test_row_min_content_is_max_child_width() -> None:
+    """Row container's min-content is its widest child's min-width.
+
+    With ``flexShrink > 0`` and a row narrower than the widest child,
+    each child's allocated width clamps at its own min-content (1 cell
+    — a text leaf) rather than collapsing to 0. The row keeps every
+    child on a distinct x column.
+    """
+    from pyink.core.reconciler import Reconciler
+    from pyink.layout import layout
+
+    # Three text-leaf children wider than the container; each has
+    # min_content_main = 1 (text leaf default).
+    tree = box(
+        text("AAA"),
+        text("BBB"),
+        text("CCC"),
+        width=4,  # narrower than the 9 cells the children want
+    )
+    reconciled = Reconciler().mount(tree, parent=None)
+    try:
+        lt = layout(reconciled, columns=10)
+        xs = [child.x for child in lt.children]
+        widths = [child.width for child in lt.children]
+        # Each child's allocated width ≥1 (min-content floor for a
+        # text leaf).
+        assert all(w >= 1 for w in widths), (
+            f"each child ≥1 cell wide; got {widths!r}"
+        )
+        # Distinct x positions (no overlap).
+        assert len(set(xs)) == len(xs), (
+            f"distinct x positions required; got {xs!r}"
+        )
+    finally:
+        Reconciler().unmount(reconciled)

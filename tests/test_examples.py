@@ -609,8 +609,14 @@ def test_text_input_example_runs() -> None:
     mod = _load_example_module(
         "text-input/text_input_demo.py", "pyink_example_text_input"
     )
+    # rows=30 — the example's main() also uses rows=30: the column stacks
+    # 4 labelled inputs (3 rows each) + title + subtitle + 4 status lines,
+    # which no longer fits at rows=24 after the Bug 1 min-content fix
+    # (text leaves now refuse to shrink below 1 row, so the trailing
+    # status lines correctly overflow the viewport instead of overlapping
+    # the input above them).
     out = _run_example(
-        mod.TextInputDemo(), columns=72, rows=24, run_seconds=0.3
+        mod.TextInputDemo(), columns=72, rows=30, run_seconds=0.3
     )
     assert "TextInput demo" in out
     # The four section labels render in the initial paint.
