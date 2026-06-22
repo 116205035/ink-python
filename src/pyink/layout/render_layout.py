@@ -81,6 +81,14 @@ class _Grid:
         # a single visible character, an empty string (wide-tail marker)
         # or a single space (default filler for unwritten cells).
         self._rows: dict[int, list[str]] = {}
+        # Stack of active content-box clips (inclusive bounds). Top of
+        # stack is the currently active clip; writes outside it are
+        # dropped. Used by the box renderer to mask content that would
+        # otherwise leak past a parent Box's border into adjacent rows
+        # when the layout engine was forced to overflow (sum of child
+        # min-contents > container main axis — see
+        # :func:`_distribute_main`'s overflow escape hatch).
+        self._clip_stack: list[tuple[int, int, int, int]] = []
 
     @property
     def width(self) -> int:
@@ -89,6 +97,36 @@ class _Grid:
     @property
     def height(self) -> int:
         return self._height
+
+    def clip(self, x1: int, y1: int, x2: int, y2: int) -> None:
+        """Push a content-box clip (inclusive ``(x1, y1, x2, y2)``).
+
+        Subsequent writes via :meth:`put` / :meth:`fill_row` that land
+        entirely outside the active clip rectangle are dropped. The new
+        clip is **intersected** with the currently active clip (if any)
+        so nested boxes only ever *narrow* the visible region — a child
+        cannot expand the writable area its parent already clipped.
+        """
+        if self._clip_stack:
+            cx1, cy1, cx2, cy2 = self._clip_stack[-1]
+            x1 = max(x1, cx1)
+            y1 = max(y1, cy1)
+            x2 = min(x2, cx2)
+            y2 = min(y2, cy2)
+        self._clip_stack.append((x1, y1, x2, y2))
+
+    def unclip(self) -> None:
+        """Pop the most recent :meth:`clip` push.
+
+        Safe to call with an empty stack (no-op) so painters can use a
+        ``try/finally`` unclip without tracking whether the matching
+        ``clip`` actually pushed.
+        """
+        if self._clip_stack:
+            self._clip_stack.pop()
+
+    def _active_clip(self) -> tuple[int, int, int, int] | None:
+        return self._clip_stack[-1] if self._clip_stack else None
 
     def _ensure_capacity(self, y: int, up_to: int) -> list[str]:
         row = self._rows.setdefault(y, [])
@@ -107,6 +145,22 @@ class _Grid:
         """
         if not text:
             return
+        # Active content-box clip: drop writes whose starting cell falls
+        # outside the clip rectangle. This is the PR3 escape-hatch for
+        # overflow when the sum of children's min-contents exceeds the
+        # container's main axis — the layout still positions those
+        # children beyond the container's content box, but the painter
+        # masks them here so they don't leak into sibling rows. Partial
+        # overlap (text starting inside the clip but extending past the
+        # far edge) is not truncated cell-by-cell: by construction every
+        # text leaf that lands its first cell inside its parent's content
+        # box has already been measured/wrapped to fit, so the overlap
+        # case does not arise in practice.
+        clip = self._active_clip()
+        if clip is not None:
+            cx1, cy1, cx2, cy2 = clip
+            if x < cx1 or x > cx2 or y < cy1 or y > cy2:
+                return
         # Reserve enough cells for the visible width, plus one extra so
         # a leading ANSI run can attach to the first cell without an
         # extra allocation.
@@ -167,6 +221,18 @@ class _Grid:
         """
         if width <= 0:
             return
+        # Active content-box clip: drop fills whose row or span falls
+        # entirely outside the clip rectangle. Background fills are
+        # emitted by the box painter *after* its children were painted,
+        # so the fill covers only cells the children have not already
+        # claimed — the clip here ensures that when the box was forced
+        # to overflow (a child's content extends past the bottom edge)
+        # the background does not smear past the border either.
+        clip = self._active_clip()
+        if clip is not None:
+            cx1, cy1, cx2, cy2 = clip
+            if y < cy1 or y > cy2 or (x + width - 1) < cx1 or x > cx2:
+                return
         row = self._ensure_capacity(y, x + width)
         for i in range(width):
             if row[x + i] != " ":
@@ -265,15 +331,40 @@ def _paint_node(
         _paint_text(grid, node, abs_x, abs_y, inherited_bg=effective_bg)
         return
 
-    # Recurse into children first so text leaves are painted before the
-    # background fill — the background painter then only fills cells
-    # that the children have not already populated, which preserves any
-    # colour / style already attached to those cells.
-    for child in node.children:
-        _paint_node(grid, child, abs_x, abs_y, inherited_bg=effective_bg)
-
+    # PR3 Bug 1 part 2: clip children to this Box's outer rectangle so
+    # any overflow content (when the sum of children's min-contents
+    # exceeds the container's main axis) is masked instead of leaking
+    # past the box's reserved area into sibling rows. The clip uses the
+    # *outer* rectangle (``abs_x..abs_x+width-1`` ×
+    # ``abs_y..abs_y+height-1``) rather than the inner content box so a
+    # child that the layout positioned in the bottom-padding band can
+    # still paint — the historic behaviour relied on this to keep small
+    # overflows visible, and the border painter runs *after* the
+    # children so it cleanly overwrites any cell a child claimed in the
+    # padding band. Real overflow (children whose positions push past
+    # ``abs_y + height - 1``) is what the clip targets. The clip is
+    # intersected with whatever active clip the ancestor pushed so
+    # nested boxes only narrow the writable region.
     if node.kind == "box":
-        _paint_box_background(grid, node, abs_x, abs_y)
+        grid.clip(abs_x, abs_y, abs_x + node.width - 1, abs_y + node.height - 1)
+    try:
+        # Recurse into children first so text leaves are painted before the
+        # background fill — the background painter then only fills cells
+        # that the children have not already populated, which preserves any
+        # colour / style already attached to those cells.
+        for child in node.children:
+            _paint_node(grid, child, abs_x, abs_y, inherited_bg=effective_bg)
+
+        if node.kind == "box":
+            _paint_box_background(grid, node, abs_x, abs_y)
+    finally:
+        if node.kind == "box":
+            grid.unclip()
+
+    # Border paints OUTSIDE the content-box clip — border edges live in
+    # the padding band (PR4 folded border into padding so layout reserved
+    # the cells) and must never be clipped by this box's own content box.
+    if node.kind == "box":
         _paint_box_border(grid, node, abs_x, abs_y)
 
 
