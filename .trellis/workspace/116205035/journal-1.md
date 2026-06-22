@@ -348,3 +348,39 @@ Fixed PyInk's long-standing inline-mode bug: when user passed rows/columns excee
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: PyInk audit critical fixes (7 Critical findings, 4 PRs)
+
+**Date**: 2026-06-22
+**Task**: PyInk audit critical fixes (7 Critical findings, 4 PRs)
+**Branch**: `main`
+
+### Summary
+
+Full code audit by 6 parallel Explore agents surfaced 7 Critical findings. 4-PR fix pass: PR1 hooks double-dispose (_disposed closure flag on use_input/use_interval/use_focus — investigation found use_focus remount bug didn't actually exist due to identity-based FocusManager._unregister, added defensive flag anyway); PR2 signal/computed race hardening (_read_epoch helper acquires _epoch_lock; verified _deferred_effects swap already inside _deferred_lock; Signal setter + Computed compare atomicity already correct via existing self._lock — added docstrings + 4 concurrency stress tests); PR3 is_active not a bug (handle_key already calls _resolve_is_active per keypress — rewrote docstring to spell out 'evaluated on every keypress, Signal changes don't trigger re-registration, only subsequent keys affected'; extended existing test to cover recover-after-re-enable); PR4 flex measured_width sync (defensive — field currently never read; locked in invariant for future readers) + rerender lock atomicity (real race: original released self._lock between two with-blocks, concurrent unmount could observe half-mounted state; merged entire body into one with self._lock, RLock permits same-thread re-entry for _paint_now). Of 7 Critical: 3 real bugs fixed (#3 hooks, #1 epoch read, #7 rerender lock); 1 latent defensive fix (#6 flex measured_width); 3 disproved as non-bugs but docstring/test improvements (#2 already correct, #4 already correct via identity check, #5 already correct via per-keypress resolution). Final state: 1182 passed + 22 xfailed, mypy strict + ruff green across 128 source files.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a3af670` | (see git log) |
+| `126e5eb` | (see git log) |
+| `5b8932b` | (see git log) |
+| `94b0694` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
