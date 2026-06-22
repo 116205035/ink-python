@@ -279,3 +279,39 @@ Phase 4 complete: 5 PRs adding 3 input externals (TextInput with single+multi-li
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: PyInk Phase 5: scroll_offset + reactive dims (VirtualList deleted as wrong abstraction)
+
+**Date**: 2026-06-22
+**Task**: PyInk Phase 5: scroll_offset + reactive dims (VirtualList deleted as wrong abstraction)
+**Branch**: `main`
+
+### Summary
+
+Phase 5 re-focused after discovering VirtualList was wrong abstraction. PR1: Text.scroll_offset public prop replaces private _pyink_scroll side channel (Bug 5 closed); _resolve extended to handle Signal directly (not just Callable). PR2-3: VirtualList external + examples + reactive dimensions (width/height/margin/padding accept Signal/Callable). Then user questioned whether Claude Code actually uses fullscreen virtualization — discovered Claude Code DEFAULT mode is inline (Static + slice recent 200), VirtualMessageList only used when CLAUDE_CODE_NO_FLICKER env enabled. Jarvis matches Claude Code default (inline), so VirtualList was wrong direction. PR4 (this commit): deleted VirtualList + tests + 2 examples, kept scroll_offset + reactive dimensions + scroll-text demo. Lesson: Claude Code's Messages.tsx is business-specific (RenderableMessage type + streaming tool state + compact boundary + MessageRow tool-use rendering), not a generic list. PyInk provides primitives (Static/Text/Box/Markdown/signals); message-list composition belongs in application (Jarvis). Final state: 1165 passed + 22 xfailed, mypy strict + ruff green across 127 source files. Phase 5 true deliverables: Text.scroll_offset public API + reactive dimensions + TextInput cursor-follow viewport via scroll_offset_sig.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9c419c0` | (see git log) |
+| `b623969` | (see git log) |
+| `cbb319c` | (see git log) |
+| `25addcb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
