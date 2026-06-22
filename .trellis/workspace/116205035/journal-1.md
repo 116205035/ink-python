@@ -417,3 +417,37 @@ User-reported bug: multi-line TextInput with rows=N didn't grow from 1 to N rows
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: maxHeight content-driven + flexShrink=0 (two-layer fix)
+
+**Date**: 2026-06-23
+**Task**: maxHeight content-driven + flexShrink=0 (two-layer fix)
+**Branch**: `main`
+
+### Summary
+
+Two-layer fix for multi-line TextInput not growing on Enter. Layer 1 (afe506e): flex.py maxHeight/maxWidth were treated as 'fill avail_h up to max' instead of CSS semantics 'content-driven, capped at max'. Fixed by going auto (own_h=-1) when max_height is set and height is None, letting content drive size with post-measurement clamp. Also propagated child_max_h (mirroring child_max_w) and capped text leaf height under at-most mode so scroll_offset window triggers. Layer 2 (15a2a8e, user's Cursor fix): _LabeledInput wrapper had no flexShrink=0, so column shrink pass on short terminals compressed the field, collapsing TextInput to min_content=1 row even though maxHeight=5 was correctly set. Fixed by pinning flexShrink=0 on form fields. Lesson: framework fix alone wasn't visible because demo's nested column shrank the field; need both framework (content-driven max) + application (flexShrink=0 on interactive elements). Final state: 1188 passed + 22 xfailed, mypy strict + ruff green.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `afe506e` | (see git log) |
+| `15a2a8e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
