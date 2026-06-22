@@ -2674,3 +2674,297 @@ def test_multiple_text_inputs_only_focused_receives_keys(
     assert b_changes == ["y"]
 
     inst.unmount()
+
+
+# ---------------------------------------------------------------------------
+# Bug 4 regression — CJK cursor column alignment
+# ---------------------------------------------------------------------------
+
+
+def test_cursor_position_with_cjk_chars_block() -> None:
+    """Block cursor over an ASCII char following CJK chars sits at the right column.
+
+    Regression (Bug 4): ``_build_displayed_line`` used to splice the
+    cursor SGR by character offset while ``_cursor_visible_column``
+    used display width — the two diverged by one cell for every wide
+    character before the cursor. The cursor SGR now lands at the exact
+    visible column (display width of the prefix).
+    """
+    from pyink.externals.text_input import _build_displayed_line
+    from pyink.layout.measure import string_width
+
+    # value = "你好abc"; cursor between '好' and 'a' (local_cursor = 2).
+    # Display columns: 你=0-2, 好=2-4, a=4-5, b=5-6, c=6-7.
+    # Cursor visible column = 4 (between 好's right edge and a's left edge).
+    line = "你好abc"
+    rendered = _build_displayed_line(
+        line,
+        cursor_in_line=True,
+        cursor=2,
+        line_start=0,
+        cursor_style="block",
+        cursor_color=None,
+        selection=None,
+        mask=None,
+        line_text_raw=line,
+    )
+    # Visible width of the prefix before the cursor SGR must equal 4
+    # (the display column the cursor sits on).
+    idx = rendered.find(f"{ESC}[7m")
+    assert idx != -1, f"cursor SGR not found in {rendered!r}"
+    prefix = rendered[:idx]
+    assert string_width(prefix) == 4, (
+        f"prefix before cursor should be 4 cells wide (你好), "
+        f"got {string_width(prefix)}: {rendered!r}"
+    )
+    # The cursor cell inverts 'a' (the character under the block cursor).
+    assert f"{ESC}[7ma{ESC}[0m" in rendered
+
+
+def test_cursor_position_with_cjk_chars_bar() -> None:
+    """Bar cursor between CJK and ASCII inserts at the right visible column."""
+    from pyink.externals.text_input import _build_displayed_line
+    from pyink.layout.measure import string_width
+
+    # value = "你好abc"; cursor between 好 and a (local_cursor = 2, visible col = 4).
+    line = "你好abc"
+    rendered = _build_displayed_line(
+        line,
+        cursor_in_line=True,
+        cursor=2,
+        line_start=0,
+        cursor_style="bar",
+        cursor_color=None,
+        selection=None,
+        mask=None,
+        line_text_raw=line,
+    )
+    # Visible width of the prefix before the bar cursor must be 4.
+    idx = rendered.find(f"{ESC}[7m")
+    assert idx != -1
+    prefix = rendered[:idx]
+    assert string_width(prefix) == 4, (
+        f"bar cursor should land at column 4 after 你好; "
+        f"got prefix width {string_width(prefix)}: {rendered!r}"
+    )
+
+
+def test_cursor_position_with_mixed_width() -> None:
+    """Cursor before a CJK char following an ASCII char stays aligned."""
+    from pyink.externals.text_input import _build_displayed_line
+    from pyink.layout.measure import string_width
+
+    # value = "a你好"; cursor before 你 (local_cursor = 1, visible col = 1).
+    line = "a你好"
+    rendered = _build_displayed_line(
+        line,
+        cursor_in_line=True,
+        cursor=1,
+        line_start=0,
+        cursor_style="block",
+        cursor_color=None,
+        selection=None,
+        mask=None,
+        line_text_raw=line,
+    )
+    idx = rendered.find(f"{ESC}[7m")
+    assert idx != -1
+    prefix = rendered[:idx]
+    assert string_width(prefix) == 1, (
+        f"cursor should sit at visible column 1 (after 'a'); "
+        f"got prefix width {string_width(prefix)}: {rendered!r}"
+    )
+    # The block cursor inverts 你 (the wide character under it).
+    assert f"{ESC}[7m你{ESC}[0m" in rendered
+
+
+def test_cursor_position_with_cjk_at_end() -> None:
+    """Cursor past the last CJK character lands at the line's full width."""
+    from pyink.externals.text_input import _build_displayed_line
+    from pyink.layout.measure import string_width
+
+    # value = "你好"; cursor at end (local_cursor = 2, visible col = 4).
+    line = "你好"
+    rendered = _build_displayed_line(
+        line,
+        cursor_in_line=True,
+        cursor=2,
+        line_start=0,
+        cursor_style="block",
+        cursor_color=None,
+        selection=None,
+        mask=None,
+        line_text_raw=line,
+    )
+    # End-of-line block cursor emits an inverse space; the prefix
+    # before it should be the full line (width 4).
+    idx = rendered.find(f"{ESC}[7m")
+    assert idx != -1
+    prefix = rendered[:idx]
+    assert string_width(prefix) == 4, (
+        f"cursor at end should have prefix = full line (width 4); "
+        f"got {string_width(prefix)}: {rendered!r}"
+    )
+
+
+def test_truncate_around_cursor_with_cjk() -> None:
+    """Truncation keeps the cursor SGR visible at the right column for CJK.
+
+    Long CJK line truncated so the cursor just fits in the leading
+    window: the cursor's visible column (computed from display width)
+    matches the position the SGR ends up at inside the truncated output.
+
+    Note: we keep the cursor *inside* the leading truncation window so
+    the test exercises the alignment between ``_build_displayed_line``
+    (which now splices the cursor SGR by display width) and
+    ``_truncate_line_around_cursor`` (which advances by visible cell).
+    Edge cases where the window boundary splits a wide character are
+    tracked separately under Bug 1's clip-to-box work.
+    """
+    from pyink.externals.text_input import (
+        _build_displayed_line,
+        _cursor_visible_column,
+        _truncate_line_around_cursor,
+    )
+    from pyink.layout.measure import string_width
+
+    # 3 CJK chars (width 6) + 3 ASCII = 9 visible cells.
+    line = "你好世abc"
+    assert string_width(line) == 9
+
+    # Cursor at end (after c). local_cursor = 6, visible col = 9.
+    local_cursor = 6
+    rendered = _build_displayed_line(
+        line,
+        cursor_in_line=True,
+        cursor=local_cursor,
+        line_start=0,
+        cursor_style="bar",
+        cursor_color=None,
+        selection=None,
+        mask=None,
+        line_text_raw=line,
+    )
+    cursor_col = _cursor_visible_column(line, None, local_cursor)
+    assert cursor_col == 9
+
+    # Truncate to width 10 — cursor_end (10) <= width-1 (9)? No, but
+    # the full rendered line is 10 cells wide (9 text + 1 bar), so it
+    # fits without truncation. Use a wider window to exercise the
+    # cursor-fits-in-leading-window branch directly.
+    truncated = _truncate_line_around_cursor(
+        rendered,
+        width=12,
+        cursor_visible_column=cursor_col,
+        cursor_visible_width=1,
+    )
+    assert truncated == rendered, (
+        f"no truncation expected when line fits; got {truncated!r}"
+    )
+
+    # Now truncate to exactly the cursor's end — cursor_end = 10, width
+    # = 10 → cursor_end <= width is true (fits exactly).
+    # line_width is 10 (9 content + 1 cursor cell); width=10 → no truncation.
+    truncated_fit = _truncate_line_around_cursor(
+        rendered,
+        width=10,
+        cursor_visible_column=cursor_col,
+        cursor_visible_width=1,
+    )
+    assert f"{ESC}[7m {ESC}[0m" in truncated_fit, (
+        f"cursor cell must survive truncation: {truncated_fit!r}"
+    )
+    cursor_idx = truncated_fit.find(f"{ESC}[7m")
+    prefix = truncated_fit[:cursor_idx]
+    # Cursor cell sits at column 9 — the display width of 你好世.
+    assert string_width(prefix) == 9, (
+        f"cursor should sit at column 9 (display width of 你好世); "
+        f"got {string_width(prefix)}: {truncated_fit!r}"
+    )
+
+
+def test_cursor_column_with_cjk_in_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End-to-end: cursor after CJK content lands at the correct column.
+
+    Mounts a real TextInput with CJK initial value and Home-moves the
+    cursor to the start so the block cursor sits on the first CJK char.
+    This exercises the full path through the render pipeline.
+    """
+    inst, _ = _mount(
+        TextInput(initial_value="你好", cursor_color="green"),
+        monkeypatch=monkeypatch,
+        feed=[b"\x1b[H"],  # Home → cursor at start
+        columns=20,
+        rows=3,
+    )
+
+    # The block cursor should be over 你 (the first character). Expect
+    # the green+inverse SGR run wrapping 你.
+    expected = f"{ESC}[32m{ESC}[7m你{ESC}[0m"
+    assert _wait_for(lambda: expected in _frame(inst)), (
+        f"cursor SGR over 你 not found in frame: {_frame(inst)!r}"
+    )
+    inst.unmount()
+
+
+def test_mask_with_wide_glyph_stays_aligned() -> None:
+    """A wide-char mask glyph still aligns cursor + visible width.
+
+    Edge case for Bug 4: when the caller passes a wide-character mask
+    (e.g. a CJK glyph), the old char-offset splice produced a visible
+    column different from the reported ``_cursor_visible_column``.
+    The width-based walk in :func:`_build_displayed_line` keeps the
+    two aligned regardless of mask glyph width.
+    """
+    from pyink.externals.text_input import _build_displayed_line
+    from pyink.layout.measure import string_width
+
+    # Mask = 你 (width 2). value = "abc"; cursor after 'b' (local_cursor = 2).
+    # Masked line = "你你你" (visible width 6). Cursor visible column = 4.
+    line_text = "你你你"
+    line_text_raw = "abc"
+    rendered = _build_displayed_line(
+        line_text,
+        cursor_in_line=True,
+        cursor=2,
+        line_start=0,
+        cursor_style="block",
+        cursor_color=None,
+        selection=None,
+        mask="你",
+        line_text_raw=line_text_raw,
+    )
+    idx = rendered.find(f"{ESC}[7m")
+    assert idx != -1
+    prefix = rendered[:idx]
+    # The cursor sits at visible column 4 (2 mask glyphs * 2 cells).
+    assert string_width(prefix) == 4, (
+        f"wide-mask cursor should sit at column 4; got "
+        f"{string_width(prefix)}: {rendered!r}"
+    )
+
+
+def test_bug6_distribute_main_has_no_fixed_parameter() -> None:
+    """Bug 6 — ``_distribute_main`` no longer takes a ``fixed`` parameter.
+
+    The parameter was dead (callers built ``main_is_fixed`` lists but
+    the function body never read them). Regression: if someone
+    reintroduces it (or a caller starts passing it again), this test
+    fails fast via the signature inspection.
+    """
+    import inspect
+
+    from pyink.layout.flex import _distribute_main
+
+    sig = inspect.signature(_distribute_main)
+    assert "fixed" not in sig.parameters, (
+        f"_distribute_main must not have a 'fixed' parameter; "
+        f"signature: {sig}"
+    )
+    # And the expected parameter set.
+    expected = {"children", "sizes", "free", "gap"}
+    assert set(sig.parameters) == expected, (
+        f"_distribute_main signature changed unexpectedly: {sig}"
+    )

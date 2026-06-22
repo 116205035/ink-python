@@ -309,6 +309,12 @@ def _apply_selection(
     underlying value that ``displayed`` corresponds to (selection is
     per-line — only the slice that overlaps the current line is
     highlighted). Offsets outside the range contribute no escape.
+
+    .. note::
+       This helper is retained for simple no-cursor cases. Cursor rows
+       go through :func:`_build_displayed_line`, which walks characters
+       by **display width** so that CJK wide characters align the
+       selection SGR with the cursor's visible column (Bug 4 fix).
     """
     if sel_end <= value_start or sel_start >= value_end:
         return displayed
@@ -326,6 +332,40 @@ def _apply_selection(
     return f"{before}{_SGR_INVERSE}{body}{_SGR_RESET}{after}"
 
 
+def _visible_width_to_char_offset(
+    line_text: str,
+    target_width: int,
+) -> int:
+    """Return the char offset in ``line_text`` at visible column ``target_width``.
+
+    Walks characters one at a time, accumulating each character's
+    :func:`pyink.layout.measure._char_width`. Returns the char offset
+    whose leading visible column equals ``target_width``. If a wide
+    character straddles ``target_width`` (its left edge is before and
+    right edge is at-or-after), returns the offset of that wide
+    character — the caller decides whether to splice before or onto
+    that character. Clamps to ``[0, len(line_text)]``.
+    """
+    if target_width <= 0:
+        return 0
+    from pyink.layout.measure import _char_width
+
+    pos = 0
+    width = 0
+    while pos < len(line_text):
+        ch = line_text[pos]
+        w = _char_width(ch)
+        if w <= 0:
+            # Combining mark — skip; attaches to the previous base char.
+            pos += 1
+            continue
+        if width >= target_width:
+            return pos
+        pos += 1
+        width += w
+    return pos
+
+
 def _build_displayed_line(
     line_text: str,
     cursor_in_line: bool,
@@ -335,8 +375,17 @@ def _build_displayed_line(
     cursor_style: CursorStyle,
     cursor_color: str | None,
     selection: tuple[int, int] | None,
+    mask: str | None = None,
+    line_text_raw: str | None = None,
 ) -> str:
     """Render one line of the buffer with cursor + selection overlays.
+
+    Walks the line **by display width**, not character offset, so the
+    cursor SGR lands on the exact visible column returned by
+    :func:`_cursor_visible_column`. For CJK / wide-character rows the
+    visible column diverges from the character offset; this walk keeps
+    cursor + selection aligned with what the truncation helper
+    computes (Bug 4).
 
     Parameters
     ----------
@@ -354,84 +403,173 @@ def _build_displayed_line(
     selection:
         Active selection as an absolute ``[start, end)`` pair, or
         ``None``.
+    mask:
+        The mask glyph in use (or ``None``). Used to translate
+        selection offsets to visible columns consistently with the
+        cursor (masked chars have width 1 regardless of glyph, except
+        for wide-char masks which fall back to their real width).
+    line_text_raw:
+        The un-masked source line. Required when ``mask`` is set so
+        selection offsets can be translated by character index through
+        :func:`_cursor_visible_column`. When ``mask`` is ``None``,
+        ``line_text`` *is* the raw line and this parameter is ignored.
     """
-    line_end = line_start + len(line_text)
-
     if selection is not None:
         sel_start, sel_end = selection
     else:
         sel_start = sel_end = -1
 
     if not cursor_in_line:
-        # No cursor here — just paint any selection overlap and return.
-        return _apply_selection(
+        # No cursor here — paint selection overlap by visible column.
+        return _apply_selection_by_width(
             line_text,
-            value_start=line_start,
-            value_end=line_end,
+            line_start=line_start,
             sel_start=sel_start,
             sel_end=sel_end,
+            mask=mask,
+            line_text_raw=line_text_raw if line_text_raw is not None else line_text,
         )
 
     local_cursor = cursor - line_start
+    raw_for_cols = line_text_raw if line_text_raw is not None else line_text
+    cursor_col = _cursor_visible_column(raw_for_cols, mask, local_cursor)
 
-    if cursor_style == "bar":
-        # Bar inserts an extra cell at the cursor position; selection
-        # paint applies to the characters on either side of the bar.
-        before = line_text[:local_cursor]
-        rest = line_text[local_cursor:]
-        before = _apply_selection(
-            before,
-            value_start=line_start,
-            value_end=line_start + local_cursor,
-            sel_start=sel_start,
-            sel_end=sel_end,
-        )
-        rest = _apply_selection(
-            rest,
-            value_start=cursor,
-            value_end=line_end,
-            sel_start=sel_start,
-            sel_end=sel_end,
-        )
-        cursor_cell = _cursor_cell(
-            cursor_style, char="", cursor_color=cursor_color
-        )
-        return before + cursor_cell + rest
+    # Selection visible-column boundaries within this line. Clamped to
+    # the line's visible extent. ``None`` when there's no selection
+    # overlap or no selection at all.
+    sel_start_col: int | None = None
+    sel_end_col: int | None = None
+    if selection is not None:
+        line_end_value = line_start + len(raw_for_cols)
+        if sel_end > line_start and sel_start < line_end_value:
+            local_sel_start = max(0, sel_start - line_start)
+            local_sel_end = min(len(raw_for_cols), sel_end - line_start)
+            sel_start_col = _cursor_visible_column(raw_for_cols, mask, local_sel_start)
+            sel_end_col = _cursor_visible_column(raw_for_cols, mask, local_sel_end)
 
-    # Block / underline sit *on* a character. At end-of-line (cursor ==
-    # line_end) there is no character to sit on — emit the cursor cell
-    # with an empty underlying char (renders as a styled space).
-    before = line_text[:local_cursor]
-    rest = line_text[local_cursor:]
-    if rest:
-        target = rest[0]
-        after = rest[1:]
-    else:
-        target = ""
-        after = ""
-    cursor_cell = _cursor_cell(
-        cursor_style, char=target, cursor_color=cursor_color
-    )
-    # Selection paint wraps the non-cursor characters. The character
-    # under the cursor keeps its cursor styling (block / underline),
-    # which already swaps video / underline; selection inverse would
-    # double-invert it back to normal, so we deliberately skip the
-    # cursor cell when painting selection.
-    before = _apply_selection(
-        before,
-        value_start=line_start,
-        value_end=line_start + local_cursor,
-        sel_start=sel_start,
-        sel_end=sel_end,
-    )
-    after = _apply_selection(
-        after,
-        value_start=cursor + 1,
-        value_end=line_end,
-        sel_start=sel_start,
-        sel_end=sel_end,
-    )
-    return before + cursor_cell + after
+    from pyink.layout.measure import _char_width
+
+    out: list[str] = []
+    width = 0
+    # Selection state: are we currently inside the selection run?
+    in_selection = False
+    # Whether the cursor has been emitted.
+    cursor_emitted = False
+
+    def emit_selection_open() -> None:
+        nonlocal in_selection
+        if not in_selection:
+            out.append(_SGR_INVERSE)
+            in_selection = True
+
+    def emit_selection_close() -> None:
+        nonlocal in_selection
+        if in_selection:
+            out.append(_SGR_RESET)
+            in_selection = False
+
+    i = 0
+    n = len(line_text)
+    while i < n:
+        ch = line_text[i]
+        w = _char_width(ch)
+
+        if cursor_style == "bar" and width == cursor_col and not cursor_emitted:
+            # Close any active selection so the bar's reset doesn't get
+            # tangled with the selection's reset.
+            emit_selection_close()
+            out.append(_cursor_cell(cursor_style, char="", cursor_color=cursor_color))
+            cursor_emitted = True
+
+        # Check whether to open / close selection at this column.
+        if sel_start_col is not None and width == sel_start_col:
+            emit_selection_open()
+        if sel_end_col is not None and width == sel_end_col:
+            emit_selection_close()
+
+        # If the block / underline cursor sits on this character, emit
+        # the cursor cell (with selection *closed* around it so the two
+        # don't double-invert).
+        if (
+            cursor_style in ("block", "underline")
+            and width == cursor_col
+            and not cursor_emitted
+        ):
+            emit_selection_close()
+            out.append(_cursor_cell(cursor_style, char=ch, cursor_color=cursor_color))
+            cursor_emitted = True
+            # Skip the underlying char (the cursor cell replaced it).
+            i += 1
+            if w > 0:
+                width += w
+            continue
+
+        out.append(ch)
+        if w > 0:
+            width += w
+        i += 1
+
+    # End-of-line cursor position (cursor_col == total line width).
+    if not cursor_emitted and width == cursor_col:
+        emit_selection_close()
+        out.append(_cursor_cell(cursor_style, char="", cursor_color=cursor_color))
+        cursor_emitted = True
+
+    # Close any trailing selection.
+    emit_selection_close()
+    return "".join(out)
+
+
+def _apply_selection_by_width(
+    displayed: str,
+    *,
+    line_start: int,
+    sel_start: int,
+    sel_end: int,
+    mask: str | None,
+    line_text_raw: str,
+) -> str:
+    """Wrap the selection range of ``displayed`` in inverse video by visible width.
+
+    Used on rows where the cursor is not present. Translates the
+    selection's character offsets (relative to the line) into visible
+    columns via :func:`_cursor_visible_column`, then walks the
+    displayed string by display width inserting the SGR boundaries at
+    those columns. Keeps CJK rows aligned with the cursor-bearing row
+    (Bug 4).
+    """
+    if sel_start < 0:
+        return displayed
+    line_end_value = line_start + len(line_text_raw)
+    if sel_end <= line_start or sel_start >= line_end_value:
+        return displayed
+    local_sel_start = max(0, sel_start - line_start)
+    local_sel_end = min(len(line_text_raw), sel_end - line_start)
+    start_col = _cursor_visible_column(line_text_raw, mask, local_sel_start)
+    end_col = _cursor_visible_column(line_text_raw, mask, local_sel_end)
+    if start_col >= end_col:
+        return displayed
+
+    from pyink.layout.measure import _char_width
+
+    out: list[str] = []
+    width = 0
+    in_selection = False
+    for ch in displayed:
+        w = _char_width(ch)
+        if w > 0:
+            if not in_selection and width >= start_col and width < end_col:
+                out.append(_SGR_INVERSE)
+                in_selection = True
+            elif in_selection and width >= end_col:
+                out.append(_SGR_RESET)
+                in_selection = False
+        out.append(ch)
+        if w > 0:
+            width += w
+    if in_selection:
+        out.append(_SGR_RESET)
+    return "".join(out)
 
 
 def _split_lines(value: str) -> list[tuple[int, str]]:
@@ -681,12 +819,19 @@ def _cursor_visible_column(
 
     ``local_cursor`` is the cursor's character offset within the line
     (``cursor - line_start``). Masking collapses each character to a
-    single-cell glyph, so the column equals ``local_cursor``. Without
-    a mask the column is the cumulative :func:`string_width` of the
-    characters before the cursor.
+    single-cell glyph, so the column equals ``local_cursor`` multiplied
+    by the mask glyph's display width (Bug 4: a wide-char mask like a
+    CJK glyph occupies 2 cells per source character). Without a mask
+    the column is the cumulative :func:`string_width` of the characters
+    before the cursor.
     """
     if mask:
-        return local_cursor
+        from pyink.layout.measure import _char_width
+
+        mask_w = _char_width(mask)
+        # Masked chars are normally width 1 (``*`` / ``•``); wide masks
+        # (CJK glyphs) scale the column proportionally.
+        return local_cursor * max(1, mask_w)
     return string_width(line_text_raw[:local_cursor])
 
 
@@ -1181,6 +1326,8 @@ def _TextInputImpl(**props: Any) -> Element:
                 cursor_style=cursor_style,
                 cursor_color=cursor_color,
                 selection=cur_sel,
+                mask=mask,
+                line_text_raw=line_text_raw,
             )
             if avail_width is not None and avail_width >= 1:
                 cursor_col: int | None = None

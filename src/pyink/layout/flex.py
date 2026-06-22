@@ -1020,7 +1020,6 @@ def _layout_row(
     # Phase 1: measure each child's main-size (width) and cross-size (height).
     main_sizes: list[int] = []  # natural desired main size
     cross_sizes: list[int] = []  # natural cross size
-    main_is_fixed: list[bool] = []  # child has fixed main axis (no flex-shrink targets)
 
     # For "at-most" width measurement (when our own width is indeterminate,
     # the children still wrap at the parent's available width).
@@ -1059,7 +1058,6 @@ def _layout_row(
         actual_w = child.layout_width if child_w < 0 else child_w
         main_sizes.append(actual_w + m.horizontal)
         cross_sizes.append(child.layout_height + m.vertical)
-        main_is_fixed.append(child_w >= 0 or child.style.flex_grow > 0)
 
     n = len(children)
     total_gap = gap * (n - 1) if n > 1 else 0
@@ -1069,7 +1067,7 @@ def _layout_row(
         free = own_w - natural_main
         if free != 0 and n > 0:
             main_sizes = _distribute_main(
-                children, main_sizes, main_is_fixed, free, gap
+                children, main_sizes, free, gap
             )
 
     # Cross-axis size: max child cross size, or own_h if bounded.
@@ -1157,7 +1155,6 @@ def _layout_column(
 
     main_sizes: list[int] = []
     cross_sizes: list[int] = []
-    main_is_fixed: list[bool] = []
 
     child_max_h = own_h if own_h >= 0 else (
         effective_max_h if effective_max_h != float("inf") else float("inf")
@@ -1184,7 +1181,6 @@ def _layout_column(
         actual_h = child.layout_height if child_h < 0 else child_h
         main_sizes.append(actual_h + m.vertical)
         cross_sizes.append(child.layout_width + m.horizontal)
-        main_is_fixed.append(child_h >= 0 or child.style.flex_grow > 0)
 
     n = len(children)
     total_gap = gap * (n - 1) if n > 1 else 0
@@ -1194,7 +1190,7 @@ def _layout_column(
         free = own_h - natural_main
         if free != 0 and n > 0:
             main_sizes = _distribute_main(
-                children, main_sizes, main_is_fixed, free, gap
+                children, main_sizes, free, gap
             )
 
     cross_size = own_w if own_w >= 0 else (max(cross_sizes) if cross_sizes else 0)
@@ -1267,7 +1263,6 @@ def _ordered_children(style: FlexStyle, children: list[FlexNode]) -> list[FlexNo
 def _distribute_main(
     children: list[FlexNode],
     sizes: list[int],
-    fixed: list[bool],
     free: float,
     gap: int,
 ) -> list[int]:
