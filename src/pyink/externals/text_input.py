@@ -1274,17 +1274,29 @@ def _TextInputImpl(**props: Any) -> Element:
 
     effect(_notify_cursor_change)
 
-    # Live scroll state shared with the layout's text painter. PyInk
-    # function components run once at mount, so a static prop can't track
-    # the cursor as it moves; this mutable mapping is updated inside
-    # :func:`_render_lines` on every paint and read by the layout's
-    # cursor-aware vertical clip (``_clip_lines_to_height``) so the
-    # cursor row stays visible even when the surrounding layout grants
-    # the text leaf fewer rows than the viewport holds.
-    scroll_state: dict[str, int] = {"cursor_row": 0}
+    # Vertical scroll window — the line offset the layout's text painter
+    # should start displaying at. Phase 5 replaces the historical
+    # ``_pyink_scroll`` mutable-mapping side-channel with a public
+    # ``scroll_offset`` Signal: writing it from inside ``_render_lines``
+    # is read by the layout at paint time (the layout engine resolves
+    # Signal / callable decoration props at layout time, so the
+    # subscription is established automatically). When ``rows`` is set
+    # and the buffer has more rendered lines than the viewport height,
+    # we slide the window so the cursor line stays visible — this is
+    # what keeps the last line the user typed on-screen instead of
+    # letting the layout's top-keeping clip drop it past the viewport.
+    scroll_offset_sig: Signal[int] = signal(0)
 
     def _render_lines() -> list[str]:
-        """Build a list of per-line rendered strings (with cursor + selection)."""
+        """Build a list of per-line rendered strings (with cursor + selection).
+
+        The list always covers **every** line of the current buffer —
+        vertical scrolling is delegated to the layout's text painter via
+        the public ``scroll_offset`` signal (Phase 5). The painter slices
+        ``[scroll_offset, scroll_offset + height)`` from the joined
+        payload, so the cursor stays visible even when the surrounding
+        box is shrunk below the buffer's natural row count.
+        """
         cur_value = value.value
         cur_cursor = cursor.value
         cur_sel = selection.value
@@ -1296,7 +1308,7 @@ def _TextInputImpl(**props: Any) -> Element:
             cursor_cell = _cursor_cell(
                 cursor_style, char="", cursor_color=cursor_color
             )
-            scroll_state["cursor_row"] = 0
+            scroll_offset_sig.value = 0
             return [apply_style(placeholder, dimColor=True) + cursor_cell]
 
         # Width available for per-line truncation. We pre-truncate each
@@ -1353,36 +1365,46 @@ def _TextInputImpl(**props: Any) -> Element:
                 )
             lines.append(rendered)
 
-        # Vertical viewport (multi-line scroll-to-cursor). When ``rows``
-        # is set and the buffer has more rendered lines than the viewport
-        # height, emit only a window of ``rows`` lines that always
-        # contains the cursor line. As the user adds lines at the bottom
-        # the window tracks the cursor downward, so the last line (and the
-        # cursor sitting on it) stays visible instead of being clipped off
-        # the bottom by the layout's height truncation — which keeps the
-        # *top* lines and drops the bottom ones, hiding the cursor (Bug:
-        # multi-line input grows past the available height, the cursor
-        # disappears and only ArrowUp brings it back into view).
+        # Vertical viewport (multi-line scroll-to-cursor). When the
+        # requested viewport height (``rows`` prop, falling back to a
+        # ``height`` passed via ``box_props``) is set and smaller than
+        # the buffer's rendered line count, slide a viewport-tall
+        # window so the cursor line stays visible. Phase 5 routes this
+        # through the public ``scroll_offset`` signal (read by the
+        # layout's text painter) instead of the historical
+        # ``_pyink_scroll`` mutable-mapping side-channel — the painter
+        # slices ``[scroll_offset, scroll_offset + height)`` from the
+        # full joined payload, so:
         #
-        # ``rows`` acts as a *maximum*: a buffer with fewer lines than
-        # ``rows`` still grows naturally (1 row → ``rows`` rows), so the
-        # box only stops growing once the content would overflow the
-        # viewport. Emitting exactly ``rows`` lines also bounds the
-        # Text node's height, so the surrounding Box never expands past
-        # the viewport and never squeezes its siblings.
+        # * When the layout grants ``height >= viewport``, the window
+        #   contains exactly the viewport lines around the cursor.
+        # * When the layout grants ``height < viewport`` (a tight
+        #   column squeezes the box below the requested viewport), the
+        #   painter re-slices within our window, still keeping the
+        #   cursor row on screen (regression: cursor on the last line
+        #   vanished because the top-keeping clip dropped the bottom
+        #   rows).
+        #
+        # ``viewport_h`` is the *intended* viewport height — the layout
+        # may ultimately grant less, but we size the scroll window to
+        # the intent so the painter's secondary slice still contains
+        # the cursor. ``rows`` wins over ``box_props.height`` when both
+        # are set (rows is the dedicated TextInput viewport knob).
+        viewport_h: int | None
+        if rows is not None and rows >= 1:
+            viewport_h = rows
+        else:
+            raw_h = box_props.get("height")
+            viewport_h = raw_h if isinstance(raw_h, int) and not isinstance(raw_h, bool) else None
         cur_line = cursor_line(cur_value, cur_cursor)
-        if rows is not None and rows >= 1 and len(lines) > rows:
+        if viewport_h is not None and viewport_h >= 1 and len(lines) > viewport_h:
             start = 0
-            if cur_line >= rows:
-                start = cur_line - rows + 1
-            start = max(0, min(start, len(lines) - rows))
-            lines = lines[start : start + rows]
-            cur_line -= start
-        # Report the cursor's row *within the emitted window* so the
-        # layout's height clip can keep it on screen if it grants the
-        # leaf fewer rows than we emitted (e.g. a tight column shrinks
-        # the input box below ``rows``).
-        scroll_state["cursor_row"] = max(0, min(cur_line, len(lines) - 1))
+            if cur_line >= viewport_h:
+                start = cur_line - viewport_h + 1
+            start = max(0, min(start, len(lines) - viewport_h))
+            scroll_offset_sig.value = start
+        else:
+            scroll_offset_sig.value = 0
         return lines
 
     def render_text() -> str:
@@ -1410,14 +1432,25 @@ def _TextInputImpl(**props: Any) -> Element:
     # growing the parent Box and pushing siblings past the column / row
     # budget. For multi-line buffers the wrap engine preserves the
     # embedded newlines, so the Box still grows to N rows.
+    #
+    # Phase 5 scroll routing: the public ``scroll_offset`` signal drives
+    # the layout's text painter to slice ``[offset, offset + height)``
+    # from the joined buffer, keeping the cursor row on screen as the
+    # user types past the viewport. ``rows`` (when set) additionally
+    # pins the surrounding Box's height so the box never expands past
+    # the viewport — the caller-provided ``box_props.height`` wins over
+    # ``rows`` if both are set (the caller opted into a tighter bound).
+    resolved_box_props: dict[str, Any] = dict(box_props)
+    if rows is not None and rows >= 1 and "height" not in resolved_box_props:
+        resolved_box_props["height"] = rows
     return Box(
         Text(
             render_text,
             color=color,
             wrap="truncate-end",
-            _pyink_scroll=scroll_state,
+            scroll_offset=scroll_offset_sig,
         ),
-        **box_props,
+        **resolved_box_props,
     )
 
 

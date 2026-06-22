@@ -386,6 +386,14 @@ def _paint_text(
     ``backgroundColor`` (if any) is applied unless the Text declares its
     own ``backgroundColor``.
 
+    Vertical scrolling (Phase 5): the public ``scroll_offset`` prop
+    decides which row the visible window starts at when the text has
+    more lines than the layout's granted height. The layout engine
+    resolves callable / Signal forms at layout time (see
+    :func:`pyink.layout.flex._resolve_decoration_props`) so the value
+    read here is already a plain ``int`` or ``None``. ``None`` keeps
+    the historic top-keeping behaviour.
+
     Styling is applied **per line** rather than over the whole multi-line
     string. A whole-string wrap would put the SGR opener on the first
     line and the reset on the last line; the renderer writes each line
@@ -406,39 +414,44 @@ def _paint_text(
 def _clip_lines_to_height(
     lines: list[str], height: int, props: dict[str, Any]
 ) -> list[str]:
-    """Clip ``lines`` to ``height`` rows, keeping a focal line visible.
+    """Clip ``lines`` to ``height`` rows, honouring an optional scroll window.
 
     The default policy keeps the *leading* ``height`` lines (matches
     ink's ``<Box height={n}>`` truncation). A text leaf may opt into
-    cursor-aware clipping by carrying a ``_pyink_scroll`` prop — a
-    mutable mapping whose ``"cursor_row"`` entry is the 0-based index of
-    the line the caller wants to keep on screen. When present and the
-    content overflows ``height``, we slide a ``height``-tall window so
-    that focal row stays visible (scroll-to-cursor). This is what lets a
-    multi-line :func:`pyink.externals.TextInput` keep its cursor in view
-    when the surrounding layout grants the leaf fewer rows than the
-    buffer has lines — without it the top-keeping clip would drop the
-    bottom line the cursor sits on, so the cursor "disappears" past the
-    last visible row and only re-appears after scrolling back up.
+    vertical scrolling by carrying a ``scroll_offset`` prop — a 0-based
+    line offset of the row the caller wants to be the top of the visible
+    window. When set, we slice ``lines`` to
+    ``[scroll_offset, scroll_offset + height)`` so the window starts at
+    the requested row. The offset is clamped to ``[0, len(lines) -
+    height]`` so a value past the end just pins to the last window
+    (matches the natural bottom-of-list scroll behaviour).
 
-    The prop is a live mapping (not a static value) because PyInk
-    function components run once at mount: the cursor row changes on
-    every keystroke, so ``TextInput`` updates the shared mapping inside
-    its render callable and the layout reads the current value here.
+    ``scroll_offset`` is the public Phase 5 replacement for the
+    historical ``_pyink_scroll`` private prop — it accepts plain
+    ``int``, :class:`pyink.Signal`, or ``Callable[[], int]`` and is
+    resolved at layout time, so a function component whose cursor moves
+    on every keystroke can simply write a signal and have the render
+    loop pick up the change. This is what lets a multi-line
+    :func:`pyink.externals.TextInput` keep its cursor in view when the
+    surrounding layout grants the leaf fewer rows than the buffer has
+    lines — without it the top-keeping clip would drop the bottom line
+    the cursor sits on, so the cursor "disappears" past the last
+    visible row and only re-appears after scrolling back up.
     """
-    scroll = props.get("_pyink_scroll")
-    cursor_row: int | None = None
-    if isinstance(scroll, dict):
-        raw = scroll.get("cursor_row")
-        if isinstance(raw, int):
-            cursor_row = raw
-    if cursor_row is None:
+    raw = props.get("scroll_offset")
+    scroll_offset: int | None
+    if isinstance(raw, bool):
+        # ``bool`` is an ``int`` subclass — never a meaningful scroll
+        # value, so normalise to "unset".
+        scroll_offset = None
+    elif isinstance(raw, int):
+        scroll_offset = raw
+    else:
+        scroll_offset = None
+    if scroll_offset is None or scroll_offset <= 0:
         return lines[:height]
-    # Slide a ``height``-tall window that contains ``cursor_row``.
-    start = 0
-    if cursor_row >= height:
-        start = cursor_row - height + 1
-    start = max(0, min(start, len(lines) - height))
+    max_start = max(0, len(lines) - height)
+    start = max(0, min(scroll_offset, max_start))
     return lines[start : start + height]
 
 

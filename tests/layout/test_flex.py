@@ -956,38 +956,43 @@ def test_callable_truncate_text_refits_after_renderer_rerun() -> None:
 
 
 def test_clip_lines_to_height_keeps_cursor_row_visible() -> None:
-    """``_clip_lines_to_height`` slides its window to keep the cursor row.
+    """``_clip_lines_to_height`` honours the public ``scroll_offset`` prop.
 
-    Default (no ``_pyink_scroll`` prop) keeps the leading rows — matching
-    ink's ``<Box height={n}>`` truncation. When a live ``_pyink_scroll``
-    mapping carries a ``cursor_row`` the clip windows around it instead,
-    so a multi-line ``TextInput`` whose box was shrunk below its viewport
-    still shows the row the cursor sits on (Regression: cursor on the
-    last line vanished because the top-keeping clip dropped the bottom
-    rows).
+    Default (no ``scroll_offset`` prop) keeps the leading rows — matching
+    ink's ``<Box height={n}>`` truncation. When ``scroll_offset`` is set
+    the clip windows down by that many rows, so a multi-line
+    ``TextInput`` whose box was shrunk below its viewport still shows the
+    row the cursor sits on (Regression: cursor on the last line vanished
+    because the top-keeping clip dropped the bottom rows).
     """
     from pyink.layout.render_layout import _clip_lines_to_height
 
     lines = ["L0", "L1", "L2", "L3", "L4", "L5"]
     # No scroll prop → leading rows.
     assert _clip_lines_to_height(lines, 3, {}) == ["L0", "L1", "L2"]
-    # Cursor on the last row → window slides to the bottom.
-    assert _clip_lines_to_height(lines, 3, {"_pyink_scroll": {"cursor_row": 5}}) == [
+    # Scroll past the first three rows → window slides to the bottom.
+    assert _clip_lines_to_height(lines, 3, {"scroll_offset": 3}) == [
         "L3",
         "L4",
         "L5",
     ]
-    # Cursor in the leading window → no slide needed.
-    assert _clip_lines_to_height(lines, 3, {"_pyink_scroll": {"cursor_row": 1}}) == [
+    # ``scroll_offset=0`` is the same as unset.
+    assert _clip_lines_to_height(lines, 3, {"scroll_offset": 0}) == [
         "L0",
         "L1",
         "L2",
     ]
-    # Cursor in the middle → centred-ish window that still contains it.
-    assert _clip_lines_to_height(lines, 3, {"_pyink_scroll": {"cursor_row": 3}}) == [
+    # Offset in the middle → window starts at that row.
+    assert _clip_lines_to_height(lines, 3, {"scroll_offset": 1}) == [
         "L1",
         "L2",
         "L3",
+    ]
+    # Offset past the end clamps to the last valid window.
+    assert _clip_lines_to_height(lines, 3, {"scroll_offset": 99}) == [
+        "L3",
+        "L4",
+        "L5",
     ]
 
 

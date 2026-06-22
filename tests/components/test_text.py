@@ -423,3 +423,144 @@ def test_text_three_level_nested_boxes_render_correctly() -> None:
         ]
     )
     assert out == expected
+
+
+# ---------------------------------------------------------------------------
+# scroll_offset — Phase 5 public API for vertical viewport control
+# ---------------------------------------------------------------------------
+# When a Text leaf's content has more lines than the layout grants rows,
+# ``scroll_offset`` slides a ``height``-tall window down by N rows. The
+# prop accepts a plain ``int``, a ``Signal[int]`` (layout subscribes to
+# changes), or a ``Callable[[], int]`` (same subscription semantics as
+# other callable style props). ``None`` (default) keeps the leading rows.
+
+
+def test_text_scroll_offset_none_shows_from_top() -> None:
+    """Default (no scroll_offset) keeps the leading rows.
+
+    Matches ink's ``<Box height={n}>`` truncation behaviour and the
+    historic pre-Phase-5 semantics.
+    """
+    out = render_to_string(
+        Box(
+            Text("L0\nL1\nL2\nL3\nL4"),
+            height=3,
+        )
+    )
+    assert out == "L0\nL1\nL2"
+
+
+def test_text_scroll_offset_int_shows_from_offset() -> None:
+    """``scroll_offset=2`` shows rows ``[2, 2+height)`` from the text."""
+    out = render_to_string(
+        Box(
+            Text("L0\nL1\nL2\nL3\nL4", scroll_offset=2),
+            height=3,
+        )
+    )
+    assert out == "L2\nL3\nL4"
+
+
+def test_text_scroll_offset_zero_matches_default() -> None:
+    """``scroll_offset=0`` is the same as unset (top-keeping)."""
+    out = render_to_string(
+        Box(
+            Text("L0\nL1\nL2\nL3\nL4", scroll_offset=0),
+            height=3,
+        )
+    )
+    assert out == "L0\nL1\nL2"
+
+
+def test_text_scroll_offset_clamps_at_max() -> None:
+    """Offset past the end clamps to the last valid window.
+
+    A 5-line text in a 3-row box has at most ``len-height = 2`` as a
+    valid offset (window ``[2, 5)`` = last 3 lines). Anything larger
+    pins to that same last window instead of over-scrolling past the
+    content.
+    """
+    out = render_to_string(
+        Box(
+            Text("L0\nL1\nL2\nL3\nL4", scroll_offset=99),
+            height=3,
+        )
+    )
+    assert out == "L2\nL3\nL4"
+
+
+def test_text_scroll_offset_callable_dynamic() -> None:
+    """``Callable[[], int]`` is evaluated at layout time (matches other props)."""
+    out = render_to_string(
+        Box(
+            Text("L0\nL1\nL2\nL3\nL4", scroll_offset=lambda: 2),
+            height=3,
+        )
+    )
+    assert out == "L2\nL3\nL4"
+
+
+def test_text_scroll_offset_with_height_zero_no_scroll() -> None:
+    """``height=0`` grants no rows so no content is painted at all.
+
+    Establishes that scroll_offset does not invent rows when the layout
+    grants zero — both the offset and the clip cooperate to produce an
+    empty snapshot.
+    """
+    out = render_to_string(
+        Box(
+            Text("L0\nL1\nL2\nL3\nL4", scroll_offset=2),
+            height=0,
+        )
+    )
+    assert out == ""
+
+
+def test_text_scroll_offset_signal_dynamic() -> None:
+    """``Signal[int]`` is read at layout time and subscribes the render loop.
+
+    The full reactive-pipeline check: the prop accepts a bare
+    :class:`pyink.Signal` (no ``lambda`` wrapper needed), the layout
+    reads ``.value`` inside the render-loop effect so a subsequent
+    write triggers a re-paint that reflects the new offset.
+    """
+    import io
+    import time
+
+    from pyink import render
+    from pyink.core.signal import Signal, signal
+    from pyink.render.instance import Instance
+
+    offset_sig: Signal[int] = signal(0)
+
+    def App() -> Element:
+        return Box(
+            Text(
+                "L0\nL1\nL2\nL3\nL4",
+                scroll_offset=offset_sig,
+            ),
+            height=3,
+        )
+
+    out = io.StringIO()
+    inst: Instance = render(
+        App(),
+        stdout=out,
+        stdin=io.StringIO(),
+        columns=10,
+        rows=5,
+        exit_on_ctrl_c=False,
+    )
+    time.sleep(0.05)
+    frame = inst.current_frame
+    # Initial paint: offset=0 → leading rows.
+    assert "L0" in frame and "L1" in frame and "L2" in frame
+    assert "L3" not in frame and "L4" not in frame
+
+    offset_sig.value = 2
+    time.sleep(0.15)
+    frame = inst.current_frame
+    # Updated paint: offset=2 → window slides to the bottom.
+    assert "L2" in frame and "L3" in frame and "L4" in frame
+    assert "L0" not in frame and "L1" not in frame
+    inst.unmount()

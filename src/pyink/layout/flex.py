@@ -29,21 +29,26 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 
+from pyink.core.signal import Signal
 from pyink.layout.measure import string_width, wrap_text
 
 _T = TypeVar("_T")
 
 
-def _resolve(prop: _T | Callable[[], _T]) -> _T:
-    """Evaluate ``prop`` if it's a callable, otherwise return it unchanged.
+def _resolve(prop: _T | Callable[[], _T] | Signal[_T]) -> _T:
+    """Evaluate ``prop`` if it's a Signal / callable, else return unchanged.
 
     Per PRD Decision 13, every style prop (``color`` / ``bold`` /
     ``borderStyle`` / …) accepts a ``Callable[[], T]`` in addition to a
-    plain ``T``. The callable is invoked **here** — at layout time — so
-    when the layout pass runs inside the render-loop effect's tracking
-    context, any ``signal.value`` reads inside the callable establish
-    subscriptions.
+    plain ``T``. Phase 5 extends the accepted shapes to include
+    :class:`pyink.Signal` directly (so ``scroll_offset`` can be passed
+    as ``signal(0)`` without a wrapping lambda). The unwrap happens
+    **here** — at layout time — so when the layout pass runs inside the
+    render-loop effect's tracking context, the ``.value`` read on a
+    Signal establishes a subscription to it.
     """
+    if isinstance(prop, Signal):
+        return prop.value
     if callable(prop):
         return prop()
     return prop
@@ -538,6 +543,12 @@ _DECORATION_PROPS: tuple[str, ...] = (
     "borderRight",
     "borderBottom",
     "borderLeft",
+    # Phase 5 — vertical scroll window for text leaves whose content
+    # overflows the granted height. Resolved here so the value the
+    # renderer reads from ``node.props`` is already a plain ``int`` (or
+    # ``None``) and so signal / callable forms subscribe the render
+    # loop.
+    "scroll_offset",
 )
 
 
