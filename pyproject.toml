@@ -12,13 +12,26 @@ license = { text = "MIT" }
 authors = [{ name = "PyInk" }]
 keywords = ["tui", "terminal", "cli", "signals", "reactive"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Terminals :: Terminal Emulators/X Terminals",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Terminals",
+    "Typing :: Typed",
 ]
 dependencies = ["wcwidth>=0.2.0"]
+
+[project.urls]
+Homepage = "https://github.com/116205035/PyInk"
+Documentation = "https://github.com/116205035/PyInk#readme"
+Repository = "https://github.com/116205035/PyInk"
+Issues = "https://github.com/116205035/PyInk/issues"
 
 [project.optional-dependencies]
 highlight = ["pygments>=2.14"]
