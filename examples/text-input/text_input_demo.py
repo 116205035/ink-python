@@ -258,13 +258,19 @@ def TextInputDemo() -> Element:
 
 
 def main() -> int:
-    # rows=30 — the demo stacks 4 labelled inputs (label + input + hint = 3
-    # rows each) plus title / subtitle / 4 status lines. The multi-line
-    # input only becomes usable when the surrounding column has enough
-    # vertical budget to show its second row; at rows=24 long single-line
-    # content or a multi-line Enter could push siblings past the viewport
-    # and crop them.
-    inst = render(TextInputDemo(), columns=72, rows=30)
+    # Auto-detect the real terminal size (and re-detect on resize) by
+    # leaving ``columns`` / ``rows`` unset. Hard-coding a fixed viewport
+    # (the demo previously forced ``columns=72, rows=30``) is the root
+    # cause of the "garbled borders / inputs on a short terminal" bug:
+    # when the real terminal is shorter (or narrower) than the forced
+    # size, the oversized frame overflows the screen, the terminal
+    # scrolls, and the inline repaint's relative cursor-up math (which
+    # assumes every painted row is still on-screen) lands on the wrong
+    # rows — corrupting every subsequent frame. Sizing the frame to the
+    # actual terminal keeps the frame within the screen, so the hardened
+    # layout simply clips the lowest-priority rows cleanly instead of
+    # spilling past the viewport.
+    inst = render(TextInputDemo())
     try:
         inst.wait_until_exit()
     except KeyboardInterrupt:

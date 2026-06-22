@@ -16,6 +16,7 @@ from pyink.externals.select_input import SelectInput
 from pyink.externals.spinner import SPINNERS, Spinner
 from pyink.externals.streaming_text import StreamingText
 from pyink.externals.text_input import TextInput
+from pyink.externals.virtual_list import VirtualList
 
 __all__ = [
     "ConfirmInput",
@@ -31,4 +32,5 @@ __all__ = [
     "StreamingText",
     "StructuredDiff",
     "TextInput",
+    "VirtualList",
 ]
