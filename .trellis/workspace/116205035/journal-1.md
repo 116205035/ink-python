@@ -244,3 +244,38 @@ Phase 4 complete: 5 PRs adding 3 input externals (TextInput with single+multi-li
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: PyInk layout hardening (Bug 1 + 4 + 6)
+
+**Date**: 2026-06-22
+**Task**: PyInk layout hardening (Bug 1 + 4 + 6)
+**Branch**: `main`
+
+### Summary
+
+3-PR layout hardening pass from LAYOUT_ANALYSIS.md report. PR1: deleted dead 'fixed' parameter from _distribute_main (Bug 6, pure cleanup) + refactored TextInput cursor SGR splicing to use display width instead of character offset so CJK + ASCII mixed rows align correctly (Bug 4). PR2: FlexNode gained min_content_main field (text leaf=1, box container = sum/max children + padding + gap), _distribute_main shrink branch replaced single-pass max(0,...) with iterative loop that clamps each child to its min-content floor and redistributes remaining overflow to still-shrinkable children (Bug 1 part 1). PR3: _Grid gained clip/unclip API with intersection semantics; _paint_node pushes outer-rectangle clip around each Box's children before painting (border paints outside clip so never masked). Chose outer rect over inner content box to preserve existing test_examples that legitimately paint small overflows into padding band (Bug 1 part 2). Two-layer defense: layout prevents compression below 1, paint masks overflow past container. Final state: 1156 passed + 22 xfailed, mypy strict + ruff green across 126 source files. LAYOUT_ANALYSIS.md Bug 2/3/5/7 left as known MVP tradeoffs.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a3ffb03` | (see git log) |
+| `56c788f` | (see git log) |
+| `c938b27` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

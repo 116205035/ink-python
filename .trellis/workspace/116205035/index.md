@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-06-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~246 | Active |
+| `journal-1.md` | ~281 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-06-22 | PyInk layout hardening (Bug 1 + 4 + 6) | `a3ffb03`, `56c788f`, `c938b27` | `main` |
 | 6 | 2026-06-22 | PyInk TextInput cursor + is_active + overflow cascade fixes | `0e61b97`, `1ba5576`, `d507af6`, `bf34457`, `5f59462`, `49a54a9`, `c3c77e6`, `2096035` | `main` |
 | 5 | 2026-06-21 | PyInk Phase 4: input components + UTF-8/CJK bug fixes | `dbbc31d`, `bcdc021`, `a46509e`, `77a7389`, `408a6f5`, `3878651`, `087d362` | `main` |
 | 4 | 2026-06-20 | PyInk Phase 3: content rendering + 8 bug fixes | `dd8eb7e`, `86a82d8`, `d6334fd`, `a5e3e1f`, `edf5799`, `5159eb9`, `59a83bc`, `42e73f0`, `17e7a1d`, `9638247` | `main` |
