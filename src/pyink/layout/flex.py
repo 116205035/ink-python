@@ -830,8 +830,16 @@ def _layout_node(
     style = node.style
 
     # ----- 1. Resolve self size (border-box-style: includes padding) -----
+    # CSS max-height/max-width semantics: a set ``max*`` is an upper bound
+    # on the content-driven size, NOT a fill target. So when ``width`` /
+    # ``height`` are unset but the corresponding ``max*`` is set, we go
+    # auto (``-1``) and let content drive the size; the ``max*`` clamps
+    # the resolved size afterwards. Only when neither ``max*`` nor an
+    # explicit size is set do we obey an "exactly" parent constraint.
     if style.width is not None:
         own_w = max(0, style.width - style.padding.horizontal)
+    elif style.max_width is not None:
+        own_w = -1  # auto; capped by max_width after measurement
     elif avail_w_mode == "exactly":
         own_w = max(0, int(avail_w) - style.padding.horizontal)
     else:
@@ -839,6 +847,8 @@ def _layout_node(
 
     if style.height is not None:
         own_h = max(0, style.height - style.padding.vertical)
+    elif style.max_height is not None:
+        own_h = -1  # auto; capped by max_height after measurement
     elif avail_h_mode == "exactly":
         own_h = max(0, int(avail_h) - style.padding.vertical)
     else:
@@ -973,6 +983,21 @@ def _layout_node(
                 h = max(h, style.min_height - style.padding.vertical)
             if style.max_height is not None:
                 h = min(h, max(0, style.max_height - style.padding.vertical))
+            # Honour the parent's cross-axis ``at-most`` bound (which now
+            # also carries the parent's ``maxHeight`` cap via
+            # ``child_max_h``). When the text content overflows the bound,
+            # pin the leaf's resolved ``layout_height`` to the bound so
+            # the painter sees a finite ``node.height`` and engages the
+            # ``scroll_offset`` window — otherwise the leaf would report
+            # its full content height and the painter would paint every
+            # line, with the parent's outer clip masking the overflow but
+            # never sliding the cursor row into view.
+            if (
+                avail_h_mode == "at-most"
+                and avail_h != float("inf")
+                and avail_h >= 0
+            ):
+                h = min(h, max(0, int(avail_h)))
         node.layout_width = (w if own_w < 0 else own_w) + style.padding.horizontal
         node.layout_height = (h if own_h < 0 else own_h) + style.padding.vertical
         # Text leaf: min-content is 1 main-axis unit (never compresses to 0).
@@ -1065,6 +1090,15 @@ def _layout_row(
     child_max_w = own_w if own_w >= 0 else (
         effective_max_w if effective_max_w != float("inf") else float("inf")
     )
+    # Mirror on the cross axis: when our own height is indeterminate but a
+    # ``maxHeight`` is set, the cap applies to children's cross-axis
+    # measurement as well. A text leaf whose content overflows the cap then
+    # resolves its own ``layout_height`` to the cap (not the full content
+    # height), which is what lets the painter's ``scroll_offset`` window
+    # kick in and slide the cursor row into view.
+    child_max_h = own_h if own_h >= 0 else (
+        effective_max_h if effective_max_h != float("inf") else float("inf")
+    )
 
     for child in children:
         basis = _resolve_child_main_basis(child, parent_is_column=False)
@@ -1085,7 +1119,7 @@ def _layout_row(
         # intrinsic height for cross-axis alignment. Stretch applied
         # later via a re-pass.
         c_h = float(child_h_hint) if child_h_hint >= 0 else (
-            float(own_h) if own_h >= 0 else avail_h
+            float(own_h) if own_h >= 0 else child_max_h
         )
         c_h_mode: MeasureMode = "exactly" if child_h_hint >= 0 else "at-most"
 

@@ -18,6 +18,7 @@ paste-bracketing. Those land in PR2.
 from __future__ import annotations
 
 import io
+import queue
 import re
 import threading
 import time
@@ -1098,39 +1099,103 @@ def test_multiline_grows_from_1_to_rows_max(
     from the content's natural height (1 row for a single line) up to
     ``rows`` rows and then scrolls to follow the cursor.
 
-    Scenario (rows=5):
-      - mount empty buffer        -> 1 visible content row
-      - 1 Enter                   -> 2 visible rows
-      - up to 5 lines total       -> 5 visible rows
-      - 6th Enter (6+ lines)      -> still 5 visible rows (scroll)
+    Scenario (rows=5), asserting the exact visible row count at each
+    step (a weak ``<= 5`` assertion let an earlier regression where the
+    Box stayed at 1 row forever slip through):
+
+      - mount empty buffer        -> exactly 1 visible content row
+      - 1 Enter                   -> exactly 2 visible rows
+      - 4 Enters (5 newlines)     -> exactly 5 visible rows (capped)
+      - 6 Enters (6 newlines)     -> still <=5 visible rows (scroll)
     """
-    # 6 Enters produce 7 lines (each Enter adds a "\\n" with an empty
-    # tail line); we assert the visible row count stops climbing at 5.
-    feed: list[bytes] = [b"\r"] * 6
+    # We feed Enters one-at-a-time and drain on_change between each so
+    # the visible row count is observable at each intermediate state.
+    # ``queue.Queue`` is used (rather than the test's default ``_stream``
+    # which iterates a fixed list at mount) so we can push bytes
+    # incrementally after mount and assert on the intermediate frame
+    # between keystrokes.
+    feed_queue: queue.Queue[bytes] = queue.Queue()
+
+    def _feed_stream() -> Iterator[bytes]:
+        while True:
+            try:
+                yield feed_queue.get(timeout=0.05)
+            except queue.Empty:
+                yield b""
+
     changes: list[str] = []
 
     def _count_visible_content_rows(inst: Instance) -> int:
-        # Strip ANSI and drop the trailing newlines the renderer pads;
-        # keep only lines that carry any non-space glyph.
+        # Count the number of rows the rendered frame carries. The
+        # frame is the box's own height (no extra viewport padding at
+        # the bottom in the test renderer) so this is exactly the
+        # "how tall is the input box right now" answer. We strip ANSI
+        # first so the SGR escapes wrapping the cursor cell do not
+        # change row boundaries. Empty rows count too — after pressing
+        # Enter on an empty buffer the first line becomes blank and
+        # the cursor drops to the second line, so the frame carries
+        # two rows even though only one has a glyph.
         vis = _visible(_frame(inst))
-        return sum(1 for line in vis.split("\n") if line.strip())
+        rows = vis.split("\n")
+        # Drop trailing fully-empty rows the renderer may pad with.
+        while rows and rows[-1] == "":
+            rows.pop()
+        return len(rows)
 
-    # Empty buffer at mount: a single placeholder/content row.
-    inst, _ = _mount(
+    # Patch input ourselves (rather than going through ``_mount``) so we
+    # can plug in a ``queue.Queue``-driven stream instead of the default
+    # list iterator that exhausts at mount.
+    _patch_input(_feed_stream(), monkeypatch)
+    out = io.StringIO()
+    inst = render(
         TextInput(multiline=True, rows=5, on_change=changes.append),
-        monkeypatch=monkeypatch,
-        feed=feed,
+        stdout=out,
+        stdin=_FakeTTY(),
         columns=20,
         rows=12,
+        exit_on_ctrl_c=False,
     )
-    assert _wait_for(lambda: _count_visible_content_rows(inst) <= 5)
+    # Let the first paint flush.
+    time.sleep(0.05)
 
-    # Drain all Enters; the last on_change is "\\n\\n\\n\\n\\n\\n" —
-    # 6 newlines → 7 logical lines.
-    assert _wait_for(lambda: bool(changes) and changes[-1].count("\n") == 6)
-    # Box capped at maxHeight=5 → at most 5 content rows visible.
-    assert _count_visible_content_rows(inst) <= 5, (
-        f"expected ≤5 visible rows after 6 Enters, "
+    # Step 1: empty buffer at mount — exactly 1 visible content row.
+    # A buggy implementation that pinned height=5 would render 5 rows
+    # here; a different bug that froze the box at 0 rows would render 0.
+    assert _wait_for(lambda: _count_visible_content_rows(inst) == 1), (
+        f"expected exactly 1 visible row at mount (empty buffer), "
+        f"got {_count_visible_content_rows(inst)}"
+    )
+
+    # Step 2: feed one Enter; on_change fires with "\\n" (1 newline).
+    feed_queue.put(b"\r")
+    assert _wait_for(lambda: bool(changes) and changes[-1].count("\n") == 1)
+    assert _wait_for(lambda: _count_visible_content_rows(inst) == 2), (
+        f"expected exactly 2 visible rows after 1 Enter, "
+        f"got {_count_visible_content_rows(inst)}"
+    )
+
+    # Step 3: feed three more Enters → buffer carries 4 newlines → 5
+    # logical lines, exactly hitting the cap.
+    for _ in range(3):
+        feed_queue.put(b"\r")
+    assert _wait_for(
+        lambda: bool(changes) and changes[-1].count("\n") == 4
+    ), f"expected 4 newlines in buffer, got {changes[-1]!r}" if changes else "no changes"
+    assert _wait_for(lambda: _count_visible_content_rows(inst) == 5), (
+        f"expected exactly 5 visible rows at cap (4 Enters), "
+        f"got {_count_visible_content_rows(inst)}"
+    )
+
+    # Step 4: two more Enters push the buffer past the cap. The Box's
+    # maxHeight pins the visible viewport at 5; the painter scrolls to
+    # keep the cursor row on screen so the count stays at (or below) 5.
+    for _ in range(2):
+        feed_queue.put(b"\r")
+    assert _wait_for(
+        lambda: bool(changes) and changes[-1].count("\n") == 6
+    ), f"expected 6 newlines in buffer, got {changes[-1]!r}" if changes else "no changes"
+    assert _wait_for(lambda: _count_visible_content_rows(inst) <= 5), (
+        f"expected ≤5 visible rows after 6 Enters (capped, scroll), "
         f"got {_count_visible_content_rows(inst)}"
     )
     inst.unmount()

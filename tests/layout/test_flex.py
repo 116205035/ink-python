@@ -797,6 +797,81 @@ def test_set_max_height_unconstrained() -> None:
 
 
 # ---------------------------------------------------------------------------
+# CSS maxHeight / maxWidth semantics (PR: 06-23-maxheight-semantics)
+#
+# A set ``max*`` is an upper bound on the content-driven size, NOT a fill
+# target. When ``height`` is unset but ``maxHeight`` is, the box must
+# auto-size to its content (never stretching to ``avail_h`` provided by
+# the parent) and only clip when the content actually exceeds the cap.
+# Same for ``maxWidth`` on the horizontal axis.
+# ---------------------------------------------------------------------------
+
+
+def test_max_height_allows_content_to_drive_size() -> None:
+    """``maxHeight=10`` with 1 row of content → 1 visible row (not 10).
+
+    Regression for the "maxHeight treated as fill target" bug: an earlier
+    implementation fell through to ``own_h = avail_h`` whenever the
+    parent handed down an ``exactly`` constraint, so a ``maxHeight``-only
+    box stretched to fill the parent and then got clipped back down to
+    the cap — producing 10 visible rows even with a single line of
+    content. CSS semantics: ``max*`` caps, never fills.
+    """
+    # Outer box pinned to height=20 so the inner box receives
+    # ``avail_h_mode="exactly"`` with ``avail_h=20``. The buggy code
+    # would inflate the inner box to 20 rows (clipped to 10 by the
+    # max_height branch). Correct behaviour: 1 row of content.
+    tree = box(box(text("a"), maxHeight=10), height=20)
+    rendered = render_to_string(tree, columns=20)
+    lines = rendered.split("\n")
+    # First row carries the content; the inner box did NOT claim any
+    # extra rows just because the cap allowed up to 10.
+    assert lines[0] == "a"
+    assert sum(1 for ln in lines if ln.strip()) == 1
+
+
+def test_max_height_caps_overflow_content() -> None:
+    """``maxHeight=3`` with 5 content lines → exactly 3 visible rows.
+
+    The first 3 lines are painted; the remaining 2 are clipped by the
+    box's reserved area (which is now correctly capped at 3 instead of
+    pinned at the parent's ``avail_h``).
+    """
+    tree = box(text("a\nb\nc\nd\ne"), maxHeight=3)
+    assert render_to_string(tree, columns=20) == "a\nb\nc"
+
+
+def test_max_height_caps_below_parent_avail() -> None:
+    """``avail_h=20`` does NOT inflate a ``maxHeight=5``-only box.
+
+    Companion to :func:`test_max_height_allows_content_to_drive_size`:
+    the box's resolved height is the content height (1), not
+    ``min(avail_h, maxHeight)`` (which would have been 5).
+    """
+    outer = box(box(text("only"), maxHeight=5), height=20)
+    rendered = render_to_string(outer, columns=20)
+    lines = rendered.split("\n")
+    assert lines[0] == "only"
+    assert sum(1 for ln in lines if ln.strip()) == 1
+
+
+def test_max_width_analogous_does_not_fill() -> None:
+    """``maxWidth`` mirrors ``maxHeight``: caps, never fills.
+
+    A short text inside a ``maxWidth=10`` box renders at its natural
+    width (3 cells), not stretched to 10. We pin the outer box to a
+    wider ``width`` so the inner box receives an ``exactly`` constraint
+    the buggy code would have honoured.
+    """
+    tree = box(box(text("abc"), maxWidth=10), width=20)
+    rendered = render_to_string(tree, columns=20)
+    # Strip trailing pad cells: the inner box auto-sized to 3 chars
+    # instead of claiming the full 10-cell maxWidth.
+    assert rendered.rstrip() == "abc"
+    assert len(rendered.rstrip()) == 3
+
+
+# ---------------------------------------------------------------------------
 # align-content (requires flexWrap; mostly xfail in MVP)
 # ---------------------------------------------------------------------------
 
