@@ -1540,8 +1540,9 @@ def TextInput(
         characters, VSCode / vim insert feel), or ``"underline"``
         (underline under the cursor character).
     is_active:
-        Controls whether the input accepts keystrokes. Accepts three
-        shapes:
+        Controls whether :func:`handle_key` processes the keystroke.
+        Evaluated on **every keypress** (not at mount time). Accepts
+        three shapes:
 
         * ``bool`` — fixed at mount time. ``False`` makes the input
           ignore every keystroke (handy for disabling an input
@@ -1554,10 +1555,17 @@ def TextInput(
           ``is_active=lambda: handle.is_focused.value`` so only the
           focused input among several receives keystrokes.
 
+        ``Signal`` / ``Callable`` changes do **not** trigger handler
+        re-registration — only **subsequent** keystrokes are affected.
         The underlying ``use_input`` subscription is always live
         (``is_active=True``); ``handle_key`` filters out keystrokes
         whenever the resolved value is false. This keeps the dispatch
         overhead flat regardless of which shape the caller picked.
+
+        For visual feedback on focus changes (e.g. dimming an inactive
+        input), use reactive props such as
+        ``color=lambda: "gray" if not focused else None`` rather than
+        relying on ``is_active`` to re-render the component.
     **box_props:
         Forwarded to the wrapping :func:`Box` (``padding``,
         ``borderStyle``, ``width``, …).

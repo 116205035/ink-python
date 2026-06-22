@@ -2472,7 +2472,7 @@ def test_is_active_callable_evaluates_per_keypress(
     # to the input thread. This makes the test fully deterministic —
     # we control exactly when each key arrives so we can flip the flag
     # *between* keys.
-    pending: list[bytes] = [b"a", b"b", b"c"]
+    pending: list[bytes] = [b"a", b"b", b"c", b"d"]
     ready = threading.Event()
     consumed = threading.Event()
 
@@ -2525,6 +2525,11 @@ def test_is_active_callable_evaluates_per_keypress(
     send(b"c")
     time.sleep(0.05)
     assert changes == ["a"]
+
+    # Key 4: flip back to active → next key lands; final buffer is "ad".
+    state["active"] = True
+    send(b"d")
+    assert _wait_for(lambda: changes == ["a", "ad"])
 
     inst.unmount()
 
