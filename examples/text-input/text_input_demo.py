@@ -21,6 +21,16 @@ Each input renders its current value (and ``on_change`` / ``on_submit``
 fire counters) in a status line so the demo doubles as a manual
 verification harness for the external.
 
+Terminal-size safety: ``render()`` automatically **clamps** the
+hard-coded ``columns=72, rows=30`` viewport down to the real terminal
+size when stdout is a TTY. So if the user runs this demo in a
+shorter terminal (say 24 lines), the frame is sized to the actual
+viewport instead of overflowing into scrollback — this is the
+root-cause fix for the "garbled borders / cursor-up garbage on a
+short terminal" bug. Non-TTY streams (CI / output piped to a file)
+keep the caller-supplied size verbatim because there is no scrollback
+to corrupt.
+
 Run::
 
     python examples/text-input/text_input_demo.py
@@ -258,24 +268,25 @@ def TextInputDemo() -> Element:
 
 
 def main() -> int:
-    # Auto-detect the real terminal size (and re-detect on resize) by
-    # leaving ``columns`` / ``rows`` unset. Hard-coding a fixed viewport
-    # (the demo previously forced ``columns=72, rows=30``) is the root
-    # cause of the "garbled borders / inputs on a short terminal" bug:
-    # when the real terminal is shorter than the forced size, the
-    # oversized frame overflows the screen, the terminal scrolls, and the
-    # inline repaint's relative cursor-up math (which assumes every
-    # painted row is still on-screen) lands on the wrong rows —
-    # corrupting every subsequent frame.
+    # Hard-coded ``columns=72, rows=30`` is the demo's *preferred*
+    # viewport — the size at which the four labelled inputs + status
+    # lines all fit on-screen without any of them overflowing.
     #
-    # Sizing the frame to the real terminal keeps the whole frame on
-    # screen (no scroll, no repaint desync). The demo content is taller
-    # than a short terminal, so the body is wrapped in a fixed-height
-    # *scroll viewport* (see ``TextInputDemo``): the viewport clips to the
-    # available rows and auto-scrolls to keep the focused input visible,
-    # so every input is reachable by Tab-cycling focus even when the
-    # terminal cannot show them all at once.
-    inst = render(TextInputDemo())
+    # ``render()`` now **clamps** this value to the real terminal size
+    # when stdout is a TTY (see the module docstring for the full
+    # rationale). Concretely: on a 72×30 terminal the clamp is a no-op
+    # and you see the full demo; on a 72×20 terminal the frame is
+    # silently resized to 72×20 so the painted content stays on-screen
+    # instead of overflowing into scrollback and corrupting the inline
+    # repaint's cursor-up math. Previously the oversized frame would
+    # scroll, the next repaint's ``\x1b[<rows>A`` escape would land in
+    # the scrollback (invisible), and every subsequent frame would be
+    # painted in the wrong place — the "garbled borders" bug.
+    #
+    # Non-TTY streams (CI / output piped to a file) keep the
+    # caller-supplied size verbatim because there is no scrollback to
+    # corrupt.
+    inst = render(TextInputDemo(), columns=72, rows=30)
     try:
         inst.wait_until_exit()
     except KeyboardInterrupt:
