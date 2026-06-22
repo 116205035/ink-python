@@ -159,6 +159,18 @@ def _next_epoch() -> int:
         return _notification_epoch
 
 
+def _read_epoch() -> int:
+    """Read the current notification epoch atomically.
+
+    Guards against observing a half-updated counter on platforms where
+    ``int`` read/assign is not atomic under contention (CPython's GIL makes
+    this practically safe, but the lock makes the guarantee explicit and
+    future-proofs against free-threaded CPython).
+    """
+    with _epoch_lock:
+        return _notification_epoch
+
+
 def _defer_effect(run: Callable[[], None]) -> None:
     """Queue an effect re-run for phase 2 of the current notification flush.
 
@@ -293,6 +305,13 @@ class Signal(Generic[T]):
 
     @value.setter
     def value(self, new: T) -> None:
+        # The whole compare/assign/snapshot must be atomic under ``self._lock``
+        # to prevent a TOCTOU race: without the lock, another thread could
+        # mutate ``self._value`` between the ``is`` check and the ``==`` check,
+        # so the ``==`` comparison would run against a different value than the
+        # ``is`` check did — possibly skipping notification when it should fire
+        # or vice versa. Notification happens outside the lock to avoid
+        # re-entrant writes from callbacks deadlocking on this RLock.
         with self._lock:
             if new is self._value:
                 return
@@ -364,6 +383,13 @@ class Computed(Generic[T]):
             return self._value
 
     def _on_source_changed(self) -> None:
+        # Mark-dirty → recompute → compare → snapshot must be atomic under
+        # ``self._lock`` to avoid the classic TOCTOU race where another
+        # thread invalidates or recomputes this Computed between our compare
+        # and our subscriber snapshot (which could cause us to notify
+        # downstream with stale subscribers or skip a genuinely changed
+        # value). Notification runs outside the lock so callbacks writing to
+        # this Computed's sources cannot deadlock on this RLock.
         with self._lock:
             if not self._dirty:
                 # Mark dirty and recompute eagerly so we can compare the new
@@ -553,10 +579,10 @@ class Effect:
         # two paths would notify this effect during the same flush (e.g. an
         # effect that reads both a Signal and a Computed derived from it),
         # only the first defers a re-run; subsequent notifications within the
-        # same epoch are no-ops.
-        global _notification_epoch
+        # same epoch are no-ops. Read the epoch under the lock so we never
+        # observe a stale value mid-increment under concurrent flushes.
         if _notifying.get():
-            epoch = _notification_epoch
+            epoch = _read_epoch()
             if epoch == self._last_epoch:
                 return
             self._last_epoch = epoch
