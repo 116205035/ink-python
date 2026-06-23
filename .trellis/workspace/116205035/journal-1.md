@@ -585,3 +585,37 @@ Upgraded BigText from hand-coded 2-font/37-glyph to pyfiglet (300+ FIGlet fonts)
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Rename pyink to ink + PyPI name exploration (deferred)
+
+**Date**: 2026-06-23
+**Task**: Rename pyink to ink + PyPI name exploration (deferred)
+**Branch**: `main`
+
+### Summary
+
+Renamed Python package from pyink to ink (src/pyink/ → src/ink/, ~150 files import updated). PyPI name attempts: pyink (taken v25.12.0), ink-python (too similar to inkpython), ink-python rejected. Explored creative names (pynk taken, tinta taken, inkwell taken, pynkie available but similarity risk). Deferred PyPI publish — user will use git+https URL install for now. Import name is 'ink' (from ink import Box, Text, render). GitHub repo renamed to ink-python. Remote URL updated.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `95bb1b2` | (see git log) |
+| `597680c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
