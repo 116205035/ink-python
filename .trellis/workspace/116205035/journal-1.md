@@ -485,3 +485,37 @@ PyInk 0.1.0 published to PyPI. Created 4 documentation files (architecture 729 l
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: Phase 6: TaskList + Gradient + ProgressBar + Table + BigText
+
+**Date**: 2026-06-23
+**Task**: Phase 6: TaskList + Gradient + ProgressBar + Table + BigText
+**Branch**: `main`
+
+### Summary
+
+Phase 6 adds 5 externals: TaskList (task status machine pending/running/done/error/warning with integrated Spinner, on_complete callback, 52 tests), Gradient (RGB interpolation between color endpoints, ANSI-aware, 20 tests), ProgressBar (float/Signal/Callable value, custom chars, percentage toggle, 28 tests), Table (list[list]/list[dict] modes, auto column alignment, bold headers, 23 tests), BigText (2 built-in fonts block+simple, 37 glyphs A-Z+0-9+space, 26 tests). Total: 149 new tests (1240→1337), 5 new externals bringing total to 15. Examples not yet added (next task). Final state: 1337 passed + 22 xfailed, mypy strict + ruff green across 138 source files.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `743a152` | (see git log) |
+| `982b5e9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
