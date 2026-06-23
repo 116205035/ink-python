@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
+- **Total Sessions**: 16
 - **Last Active**: 2026-06-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~554 | Active |
+| `journal-1.md` | ~587 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-06-23 | BigText upgrade: pyfiglet + colors prop | `5758507` | `main` |
 | 15 | 2026-06-23 | Phase 6 examples: 5 demos for task-list/gradient/progress-bar/table/big-text | `3b0f4ff4` | `main` |
 | 14 | 2026-06-23 | Phase 6: TaskList + Gradient + ProgressBar + Table + BigText | `743a152`, `982b5e9` | `main` |
 | 13 | 2026-06-23 | Docs + PyPI 0.1.0 release | `6c508cf`, `db49376` | `main` |

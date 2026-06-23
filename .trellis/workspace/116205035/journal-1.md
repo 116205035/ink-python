@@ -552,3 +552,36 @@ Phase 6 adds 5 externals: TaskList (task status machine pending/running/done/err
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: BigText upgrade: pyfiglet + colors prop
+
+**Date**: 2026-06-23
+**Task**: BigText upgrade: pyfiglet + colors prop
+**Branch**: `main`
+
+### Summary
+
+Upgraded BigText from hand-coded 2-font/37-glyph to pyfiglet (300+ FIGlet fonts). Added colors: list[str] prop for row-cycling multi-color (mirrors ink-big-text's colors API). Lazy import with friendly ImportError. pyproject.toml adds big-text optional dep (pyfiglet>=1.0). 39 rewritten tests. Final: 1360 passed + 22 xfailed, 143 files.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5758507` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
