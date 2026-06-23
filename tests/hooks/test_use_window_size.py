@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.hooks.use_window_size` (PR6)."""
+"""Tests for :func:`ink.hooks.use_window_size` (PR6)."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import io
 
 import pytest
 
-from pyink import Text, create_element, render, use_window_size
-from pyink.core.element import Element
-from pyink.hooks.window_size import WindowSize
+from ink import Text, create_element, render, use_window_size
+from ink.core.element import Element
+from ink.hooks.window_size import WindowSize
 
 
 class _FakeTTY(io.StringIO):

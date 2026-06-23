@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from pyink import (
+from ink import (
     Box,
     BoxMetrics,
     Text,
@@ -30,10 +30,10 @@ from pyink import (
     render,
     use_box_metrics,
 )
-from pyink.core.element import Element
-from pyink.core.signal import Computed, Ref, effect
-from pyink.hooks._box_metrics_runtime import UNMEASURED, layout_epoch
-from pyink.layout.flex import LayoutNode
+from ink.core.element import Element
+from ink.core.signal import Computed, Ref, effect
+from ink.hooks._box_metrics_runtime import UNMEASURED, layout_epoch
+from ink.layout.flex import LayoutNode
 
 
 class _FakeTTY(io.StringIO):
@@ -388,7 +388,7 @@ def test_use_box_metrics_outside_render_needs_epoch_bump() -> None:
     assert metrics.value is UNMEASURED
 
     # After a bump, the computed re-evaluates and reflects the new node.
-    from pyink.hooks._box_metrics_runtime import bump_layout_epoch
+    from ink.hooks._box_metrics_runtime import bump_layout_epoch
 
     bump_layout_epoch()
     refreshed = metrics.value
@@ -414,7 +414,7 @@ def test_use_box_metrics_subscribes_via_effect() -> None:
         # Initial effect run sees UNMEASURED.
         assert observed == [False]
         box_ref.value = LayoutNode(x=0, y=0, width=4, height=1)
-        from pyink.hooks._box_metrics_runtime import bump_layout_epoch
+        from ink.hooks._box_metrics_runtime import bump_layout_epoch
 
         bump_layout_epoch()
         # Effect re-ran, now observing has_measured=True.

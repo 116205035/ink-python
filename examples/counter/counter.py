@@ -24,8 +24,8 @@ import threading
 import time
 from collections.abc import Callable
 
-from pyink import Box, Text, effect, render, signal
-from pyink.core.element import Element
+from ink import Box, Text, effect, render, signal
+from ink.core.element import Element
 
 
 def Counter() -> Element:

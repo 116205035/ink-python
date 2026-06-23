@@ -27,10 +27,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import Link
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import Link
+from ink.render.keys import Key
 
 
 def LinkDemo() -> Element:
@@ -54,8 +54,8 @@ def LinkDemo() -> Element:
             Box(
                 Text("URL: ", dimColor=True),
                 Link(
-                    "pyink on GitHub",
-                    url="https://github.com/anthropic/pyink",
+                    "ink on GitHub",
+                    url="https://github.com/anthropic/ink",
                 ),
                 flexDirection="row",
             ),

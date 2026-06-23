@@ -1,6 +1,6 @@
 """Text.scroll_offset example — public scroll API (Phase 5 PR3).
 
-Demonstrates the public ``scroll_offset`` prop on :func:`pyink.Text`:
+Demonstrates the public ``scroll_offset`` prop on :func:`ink.Text`:
 a long multi-line Text (50 numbered lines) is mounted inside a
 fixed-height Box; arrow keys advance / retreat the scroll offset by
 one line, and a status line reports the current offset.
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import sys
 
-from pyink import (
+from ink import (
     Box,
     Text,
     create_element,
@@ -34,9 +34,9 @@ from pyink import (
     use_app,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.core.signal import Signal
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.core.signal import Signal
+from ink.render.keys import Key
 
 #: Number of source lines. Larger than the visible viewport so the
 #: scroll_offset actually shifts what is visible.

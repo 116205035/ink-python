@@ -1,10 +1,10 @@
-"""Tests for :func:`pyink.externals.TaskList` (Phase 6 PR1).
+"""Tests for :func:`ink.externals.TaskList` (Phase 6 PR1).
 
 Like :mod:`tests.externals.test_spinner`, we exercise the live
-:func:`pyink.render.render` pipeline rather than
-:func:`pyink.render_to_string` because ``TaskList`` may mount a
+:func:`ink.render.render` pipeline rather than
+:func:`ink.render_to_string` because ``TaskList`` may mount a
 :func:`Spinner` for ``running`` rows, whose
-:func:`pyink.hooks.use_interval` guard requires the active
+:func:`ink.hooks.use_interval` guard requires the active
 ``_current_instance`` ContextVar — set only by ``render``.
 
 The static path (no ``running`` task) works under both renderers, but
@@ -19,17 +19,17 @@ import io
 import time
 from collections.abc import Callable
 
-from pyink import Box, render, signal
-from pyink.core.element import Element
-from pyink.externals import SPINNERS, TaskItem, TaskList
-from pyink.externals.task_list import (
+from ink import Box, render, signal
+from ink.core.element import Element
+from ink.externals import SPINNERS, TaskItem, TaskList
+from ink.externals.task_list import (
     _TERMINAL_STATES,
     _resolve_source,
     _state_color,
     _state_icon,
     _TaskListImpl,
 )
-from pyink.render.instance import Instance
+from ink.render.instance import Instance
 
 ESC = "\x1b"
 
@@ -148,19 +148,19 @@ def test_task_item_equality_and_hashable() -> None:
 
 
 def test_externals_init_exports_taskitem_and_tasklist() -> None:
-    from pyink.externals import TaskItem as InitTaskItem
-    from pyink.externals import TaskList as InitTaskList
+    from ink.externals import TaskItem as InitTaskItem
+    from ink.externals import TaskList as InitTaskList
 
     assert InitTaskItem is TaskItem
     assert InitTaskList is TaskList
 
 
-def test_task_list_not_in_pyink_top_level() -> None:
+def test_task_list_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in; top-level import must fail."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "TaskList"), "TaskList must NOT be top-level"
-    assert not hasattr(pyink, "TaskItem"), "TaskItem must NOT be top-level"
+    assert not hasattr(ink, "TaskList"), "TaskList must NOT be top-level"
+    assert not hasattr(ink, "TaskItem"), "TaskItem must NOT be top-level"
 
 
 # ---------------------------------------------------------------------------
@@ -682,7 +682,7 @@ def test_running_row_spinner_tears_down_on_unmount() -> None:
 
     def has_worker() -> bool:
         return any(
-            t.name.startswith("pyink-interval-") and t.is_alive()
+            t.name.startswith("ink-interval-") and t.is_alive()
             for t in threading.enumerate()
         )
 

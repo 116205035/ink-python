@@ -67,7 +67,7 @@ def _run_example(
     inspecting ``out.getvalue()`` after unmount would see only the
     blanked rows. We snapshot the buffer just before tearing down.
     """
-    from pyink import render
+    from ink import render
 
     out = io.StringIO()
     inst = render(
@@ -91,7 +91,7 @@ def _run_example(
 
 
 def test_counter_example_runs() -> None:
-    mod = _load_example_module("counter/counter.py", "pyink_example_counter")
+    mod = _load_example_module("counter/counter.py", "ink_example_counter")
     out = _run_example(mod.Counter(), columns=40, rows=3, run_seconds=0.6)
     assert "tests passed" in out
     assert "\x1b[2J" not in out
@@ -99,7 +99,7 @@ def test_counter_example_runs() -> None:
 
 def test_select_input_example_runs() -> None:
     mod = _load_example_module(
-        "select-input/select_input.py", "pyink_example_select_input"
+        "select-input/select_input.py", "ink_example_select_input"
     )
     out = _run_example(mod.SelectInput(), columns=40, rows=10, run_seconds=0.3)
     assert "Pick a fruit" in out
@@ -110,7 +110,7 @@ def test_select_input_example_runs() -> None:
 
 
 def test_borders_example_runs() -> None:
-    mod = _load_example_module("borders/borders.py", "pyink_example_borders")
+    mod = _load_example_module("borders/borders.py", "ink_example_borders")
     out = _run_example(mod.Borders(), columns=60, rows=5, run_seconds=0.2)
     for label in ("single", "double", "round", "bold"):
         assert label in out
@@ -118,7 +118,7 @@ def test_borders_example_runs() -> None:
 
 
 def test_static_example_runs() -> None:
-    mod = _load_example_module("static/static.py", "pyink_example_static")
+    mod = _load_example_module("static/static.py", "ink_example_static")
     # The static example pushes one item every 0.5 s — let it run long
     # enough to flush at least two items.
     out = _run_example(mod.App(), columns=50, rows=6, run_seconds=1.6)
@@ -129,7 +129,7 @@ def test_static_example_runs() -> None:
 
 def test_use_input_example_runs() -> None:
     mod = _load_example_module(
-        "use-input/use_input_demo.py", "pyink_example_use_input"
+        "use-input/use_input_demo.py", "ink_example_use_input"
     )
     out = _run_example(mod.InputDemo(), columns=50, rows=6, run_seconds=0.2)
     assert "Press any key" in out
@@ -140,7 +140,7 @@ def test_use_input_example_runs() -> None:
 
 def test_use_focus_example_runs() -> None:
     mod = _load_example_module(
-        "use-focus/use_focus_demo.py", "pyink_example_use_focus"
+        "use-focus/use_focus_demo.py", "ink_example_use_focus"
     )
     out = _run_example(mod.FocusDemo(), columns=40, rows=12, run_seconds=0.2)
     assert "Tab switches focus" in out
@@ -156,7 +156,7 @@ def test_debug_input_example_runs() -> None:
     drive any interaction on its own (just waits for keys).
     """
     mod = _load_example_module(
-        "debug-input/debug_input.py", "pyink_example_debug_input"
+        "debug-input/debug_input.py", "ink_example_debug_input"
     )
     out = _run_example(mod.DebugInput(), columns=80, rows=24, run_seconds=0.2)
     assert "Press keys" in out
@@ -167,11 +167,11 @@ def test_debug_input_example_runs() -> None:
 def test_alternate_screen_example_runs() -> None:
     """Alternate-screen example enters and exits the alternate buffer cleanly."""
     mod = _load_example_module(
-        "alternate-screen/alternate_screen.py", "pyink_example_alternate_screen"
+        "alternate-screen/alternate_screen.py", "ink_example_alternate_screen"
     )
     # Mount with alternate_screen=True so the enter/exit escapes are
     # observable in the captured stdout.
-    from pyink import render
+    from ink import render
 
     out = io.StringIO()
     inst = render(
@@ -200,7 +200,7 @@ def test_alternate_screen_example_runs() -> None:
 def test_transform_example_runs() -> None:
     """Transform example produces uppercase + line-numbered output."""
     mod = _load_example_module(
-        "transform/transform_demo.py", "pyink_example_transform"
+        "transform/transform_demo.py", "ink_example_transform"
     )
     out = _run_example(mod.TransformDemo(), columns=60, rows=18, run_seconds=0.2)
     # uppercase block — "HELLO WORLD" appears in the output.
@@ -215,7 +215,7 @@ def test_transform_example_runs() -> None:
 def test_computed_batch_example_runs() -> None:
     """computed + batch example mounts cleanly with derived state visible."""
     mod = _load_example_module(
-        "computed-batch/computed_batch.py", "pyink_example_computed_batch"
+        "computed-batch/computed_batch.py", "ink_example_computed_batch"
     )
     out = _run_example(
         mod.ComputedBatch(), columns=60, rows=10, run_seconds=0.3
@@ -232,7 +232,7 @@ def test_computed_batch_example_runs() -> None:
 def test_nested_layout_example_runs() -> None:
     """Nested-layout example renders multiple bordered regions."""
     mod = _load_example_module(
-        "nested-layout/nested_layout.py", "pyink_example_nested_layout"
+        "nested-layout/nested_layout.py", "ink_example_nested_layout"
     )
     out = _run_example(mod.NestedLayout(), columns=70, rows=18, run_seconds=0.2)
     assert "Nested Layout Demo" in out
@@ -248,7 +248,7 @@ def test_nested_layout_example_runs() -> None:
 def test_ansi_colors_example_runs() -> None:
     """ansi-colors example emits ANSI escape sequences for the named colours."""
     mod = _load_example_module(
-        "ansi-colors/ansi_colors.py", "pyink_example_ansi_colors"
+        "ansi-colors/ansi_colors.py", "ink_example_ansi_colors"
     )
     out = _run_example(mod.AnsiColors(), columns=80, rows=30, run_seconds=0.2)
     assert "ANSI Colors + Styles Demo" in out
@@ -269,7 +269,7 @@ def test_ansi_colors_example_runs() -> None:
 def test_use_window_size_example_runs() -> None:
     """use-window-size example renders the current size + layout mode."""
     mod = _load_example_module(
-        "use-window-size/use_window_size.py", "pyink_example_use_window_size"
+        "use-window-size/use_window_size.py", "ink_example_use_window_size"
     )
     # Use columns >= 60 so the two-column mode kicks in.
     out = _run_example(
@@ -286,7 +286,7 @@ def test_use_window_size_single_column_mode() -> None:
     """Below the threshold the use-window-size example switches to single-column."""
     mod = _load_example_module(
         "use-window-size/use_window_size.py",
-        "pyink_example_use_window_size_narrow",
+        "ink_example_use_window_size_narrow",
     )
     out = _run_example(
         mod.UseWindowSize(), columns=40, rows=10, run_seconds=0.2
@@ -302,7 +302,7 @@ def test_use_window_size_single_column_mode() -> None:
 def test_spinner_example_runs() -> None:
     """Spinner example mounts + paints the first frame of each type."""
     mod = _load_example_module(
-        "spinner/spinner_demo.py", "pyink_example_spinner"
+        "spinner/spinner_demo.py", "ink_example_spinner"
     )
     out = _run_example(mod.SpinnerDemo(), columns=40, rows=12, run_seconds=0.2)
     assert "Spinner demo" in out
@@ -321,7 +321,7 @@ def test_spinner_example_runs() -> None:
 def test_link_example_runs() -> None:
     """Link example emits OSC 8 sequences for each link."""
     mod = _load_example_module(
-        "link/link_demo.py", "pyink_example_link"
+        "link/link_demo.py", "ink_example_link"
     )
     out = _run_example(mod.LinkDemo(), columns=60, rows=10, run_seconds=0.2)
     assert "Link demo" in out
@@ -338,7 +338,7 @@ def test_link_example_runs() -> None:
 def test_divider_example_runs() -> None:
     """Divider example renders horizontal lines + a labelled section."""
     mod = _load_example_module(
-        "divider/divider_demo.py", "pyink_example_divider"
+        "divider/divider_demo.py", "ink_example_divider"
     )
     out = _run_example(mod.DividerDemo(), columns=60, rows=18, run_seconds=0.2)
     assert "Divider demo" in out
@@ -353,7 +353,7 @@ def test_use_focus_real_example_runs() -> None:
     """The real use_focus hook demo mounts + shows the active handle id."""
     mod = _load_example_module(
         "use-focus-real/use_focus_real_demo.py",
-        "pyink_example_use_focus_real",
+        "ink_example_use_focus_real",
     )
     out = _run_example(mod.UseFocusDemo(), columns=50, rows=14, run_seconds=0.2)
     assert "use_focus demo (real)" in out
@@ -370,7 +370,7 @@ def test_measure_element_example_runs() -> None:
     """measure_element example reports the live Width after layout."""
     mod = _load_example_module(
         "measure-element/measure_demo.py",
-        "pyink_example_measure_element",
+        "ink_example_measure_element",
     )
     out = _run_example(
         mod.MeasureDemo(), columns=70, rows=12, run_seconds=0.2
@@ -391,8 +391,8 @@ def test_measure_element_example_runs() -> None:
 
 
 def test_counter_unmount_is_idempotent_after_run() -> None:
-    mod = _load_example_module("counter/counter.py", "pyink_example_counter_idem")
-    from pyink import render
+    mod = _load_example_module("counter/counter.py", "ink_example_counter_idem")
+    from ink import render
 
     out = io.StringIO()
     inst = render(
@@ -466,9 +466,9 @@ def test_example_file_exists(rel_path: str) -> None:
 
 def test_two_examples_back_to_back_in_one_process() -> None:
     """Mount borders, unmount, then mount use-focus in the same process."""
-    borders = _load_example_module("borders/borders.py", "pyink_example_borders_2")
+    borders = _load_example_module("borders/borders.py", "ink_example_borders_2")
     focus = _load_example_module(
-        "use-focus/use_focus_demo.py", "pyink_example_use_focus_2"
+        "use-focus/use_focus_demo.py", "ink_example_use_focus_2"
     )
     out1 = _run_example(borders.Borders(), columns=60, rows=5, run_seconds=0.1)
     assert "single" in out1
@@ -484,9 +484,9 @@ def test_two_examples_back_to_back_in_one_process() -> None:
 
 def test_counter_wait_until_exit_returns_on_unmount() -> None:
     mod = _load_example_module(
-        "counter/counter.py", "pyink_example_counter_wait"
+        "counter/counter.py", "ink_example_counter_wait"
     )
-    from pyink import render
+    from ink import render
 
     out = io.StringIO()
     inst = render(
@@ -524,7 +524,7 @@ def test_streaming_text_example_runs() -> None:
     """StreamingText example mounts + paints the leading reply text."""
     mod = _load_example_module(
         "streaming-text/streaming_text_demo.py",
-        "pyink_example_streaming_text",
+        "ink_example_streaming_text",
     )
     out = _run_example(
         mod.StreamingTextDemo(), columns=70, rows=12, run_seconds=0.4
@@ -540,7 +540,7 @@ def test_highlighted_code_example_runs() -> None:
     """HighlightedCode example mounts + paints at least one code block."""
     mod = _load_example_module(
         "highlighted-code/highlighted_code_demo.py",
-        "pyink_example_highlighted_code",
+        "ink_example_highlighted_code",
     )
     out = _run_example(
         mod.HighlightedCodeDemo(), columns=70, rows=40, run_seconds=0.2
@@ -556,7 +556,7 @@ def test_highlighted_code_example_runs() -> None:
 def test_markdown_example_runs() -> None:
     """Markdown example mounts + paints the heading marker."""
     mod = _load_example_module(
-        "markdown/markdown_demo.py", "pyink_example_markdown"
+        "markdown/markdown_demo.py", "ink_example_markdown"
     )
     out = _run_example(
         mod.MarkdownDemo(), columns=70, rows=36, run_seconds=0.2
@@ -572,7 +572,7 @@ def test_markdown_example_runs() -> None:
 def test_diff_example_runs() -> None:
     """StructuredDiff example mounts + paints a +/- line."""
     mod = _load_example_module(
-        "diff/diff_demo.py", "pyink_example_diff"
+        "diff/diff_demo.py", "ink_example_diff"
     )
     out = _run_example(mod.DiffDemo(), columns=72, rows=40, run_seconds=0.2)
     assert "StructuredDiff demo" in out
@@ -586,7 +586,7 @@ def test_markdown_streaming_example_runs() -> None:
     """Streaming Markdown example mounts + paints the live heading."""
     mod = _load_example_module(
         "markdown-streaming/markdown_streaming_demo.py",
-        "pyink_example_markdown_streaming",
+        "ink_example_markdown_streaming",
     )
     # ``rows=30`` matches the value ``main()`` uses (see the comment in
     # ``markdown_streaming_demo.main`` for the Bug-8 rationale — 24
@@ -613,7 +613,7 @@ def test_markdown_streaming_example_runs() -> None:
 def test_text_input_example_runs() -> None:
     """TextInput example mounts + paints the four labelled inputs."""
     mod = _load_example_module(
-        "text-input/text_input_demo.py", "pyink_example_text_input"
+        "text-input/text_input_demo.py", "ink_example_text_input"
     )
     # rows=30 — the example's main() also uses rows=30: the column stacks
     # 4 labelled inputs (3 rows each) + title + subtitle + 4 status lines,
@@ -641,7 +641,7 @@ def test_text_input_selection_example_runs() -> None:
     """TextInput selection example mounts + paints the multi-line buffer."""
     mod = _load_example_module(
         "text-input-selection/selection_demo.py",
-        "pyink_example_text_input_selection",
+        "ink_example_text_input_selection",
     )
     out = _run_example(
         mod.SelectionDemo(), columns=64, rows=14, run_seconds=0.3
@@ -661,7 +661,7 @@ def test_select_input_real_example_runs() -> None:
     """The real SelectInput external mounts + paints every option."""
     mod = _load_example_module(
         "select-input-real/select_input_demo.py",
-        "pyink_example_select_input_real",
+        "ink_example_select_input_real",
     )
     out = _run_example(
         mod.SelectInputDemo(), columns=48, rows=14, run_seconds=0.3
@@ -679,7 +679,7 @@ def test_select_input_multi_example_runs() -> None:
     """The multi-select SelectInput mounts + paints all ten items."""
     mod = _load_example_module(
         "select-input-multi/multi_select_demo.py",
-        "pyink_example_select_input_multi",
+        "ink_example_select_input_multi",
     )
     out = _run_example(
         mod.MultiSelectDemo(), columns=64, rows=18, run_seconds=0.3
@@ -700,7 +700,7 @@ def test_select_input_multi_example_runs() -> None:
 def test_confirm_input_example_runs() -> None:
     """ConfirmInput example mounts + paints all three Y/N prompts."""
     mod = _load_example_module(
-        "confirm-input/confirm_demo.py", "pyink_example_confirm_input"
+        "confirm-input/confirm_demo.py", "ink_example_confirm_input"
     )
     out = _run_example(
         mod.ConfirmDemo(), columns=60, rows=22, run_seconds=0.3
@@ -728,7 +728,7 @@ def test_scroll_text_example_runs() -> None:
     """Text.scroll_offset example mounts + paints the first slice + status."""
     mod = _load_example_module(
         "scroll-text/scroll_text_demo.py",
-        "pyink_example_scroll_text",
+        "ink_example_scroll_text",
     )
     out = _run_example(
         mod.ScrollTextDemo(), columns=50, rows=18, run_seconds=0.3
@@ -752,7 +752,7 @@ def test_task_list_example_runs() -> None:
     """TaskList example mounts + paints the done-row checkmarks + spinner."""
     mod = _load_example_module(
         "task-list/task_list_demo.py",
-        "pyink_example_task_list",
+        "ink_example_task_list",
     )
     out = _run_example(
         mod.TaskListDemo(), columns=48, rows=12, run_seconds=0.3
@@ -772,7 +772,7 @@ def test_gradient_example_runs() -> None:
     """Gradient example mounts + emits truecolor SGR sequences per character."""
     mod = _load_example_module(
         "gradient/gradient_demo.py",
-        "pyink_example_gradient",
+        "ink_example_gradient",
     )
     out = _run_example(
         mod.GradientDemo(), columns=60, rows=14, run_seconds=0.2
@@ -794,7 +794,7 @@ def test_progress_bar_example_runs() -> None:
     """ProgressBar example mounts + paints the filled character glyph."""
     mod = _load_example_module(
         "progress-bar/progress_bar_demo.py",
-        "pyink_example_progress_bar",
+        "ink_example_progress_bar",
     )
     out = _run_example(
         mod.ProgressBarDemo(), columns=48, rows=14, run_seconds=0.3
@@ -814,7 +814,7 @@ def test_table_example_runs() -> None:
     """Table example mounts + paints both list-mode and dict-mode headers."""
     mod = _load_example_module(
         "table/table_demo.py",
-        "pyink_example_table",
+        "ink_example_table",
     )
     out = _run_example(
         mod.TableDemo(), columns=64, rows=18, run_seconds=0.2
@@ -836,7 +836,7 @@ def test_big_text_example_runs() -> None:
     """BigText example mounts + paints the pyfiglet-rendered banners."""
     mod = _load_example_module(
         "big-text/big_text_demo.py",
-        "pyink_example_big_text",
+        "ink_example_big_text",
     )
     out = _run_example(
         mod.BigTextDemo(), columns=100, rows=40, run_seconds=0.2

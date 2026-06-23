@@ -1,4 +1,4 @@
-"""Tests for the reactive core (`pyink.core.signal`)."""
+"""Tests for the reactive core (`ink.core.signal`)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 import pytest
 
-from pyink import (
+from ink import (
     Computed,
     CyclicDependency,
     Signal,
@@ -850,7 +850,7 @@ def test_notification_epoch_under_concurrent_flush() -> None:
     """
     import sys
 
-    _sig_mod = sys.modules["pyink.core.signal"]
+    _sig_mod = sys.modules["ink.core.signal"]
 
     s1 = signal(0)
     s2 = signal(0)

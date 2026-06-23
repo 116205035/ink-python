@@ -61,7 +61,7 @@ panels).
 ### Inline (default)
 
 ```python
-from pyink import render
+from ink import render
 
 render(my_tree).wait_until_exit()
 ```
@@ -79,7 +79,7 @@ Choose this when:
 ### Fullscreen
 
 ```python
-from pyink import render
+from ink import render
 
 render(my_tree, alternate_screen=True).wait_until_exit()
 ```
@@ -101,7 +101,7 @@ Textual's `Static` widget is a scrollable text area inside the UI. **PyInk's
 above the live frame*, mirroring ink's `<Static>`.
 
 ```python
-from pyink import Box, Text, Static, render, signal
+from ink import Box, Text, Static, render, signal
 
 log_lines = signal([])
 
@@ -129,7 +129,7 @@ For a Textual-style scrollable text area *inside* the live frame, use
 `Text(scroll_offset=N)` inside a `Box(height=K)`:
 
 ```python
-from pyink import Box, Text, signal
+from ink import Box, Text, signal
 
 scroll = signal(0)
 content = "line\n" * 50
@@ -209,8 +209,8 @@ class MyWidget(Widget):
 PyInk:
 
 ```python
-from pyink import use_input, use_app
-from pyink.render.keys import Key
+from ink import use_input, use_app
+from ink.render.keys import Key
 
 def MyWidget():
     app = use_app()
@@ -235,7 +235,7 @@ Textual's `Widget.focus()` / `App.focused` become PyInk's
 `use_focus_manager()` + `use_focus()`:
 
 ```python
-from pyink import use_focus_manager, use_focus, use_input, Box, Text
+from ink import use_focus_manager, use_focus, use_input, Box, Text
 
 def App():
     manager = use_focus_manager()
@@ -294,7 +294,7 @@ class MyWidget(Widget):
 PyInk:
 
 ```python
-from pyink import signal, Text, effect
+from ink import signal, Text, effect
 
 def MyWidget():
     count = signal(0)
@@ -369,7 +369,7 @@ work:
 
 ```python
 import threading
-from pyink import signal, Text, render
+from ink import signal, Text, render
 
 count = signal(0)
 
@@ -390,7 +390,7 @@ render(App()).wait_until_exit()
 For simple timers, prefer `use_interval` over hand-rolled threads:
 
 ```python
-from pyink import use_interval, signal, Text
+from ink import use_interval, signal, Text
 
 def Spinner():
     frame = signal(0)
@@ -417,7 +417,7 @@ Textual's async handlers don't translate directly. Three options:
 
    ```python
    import asyncio, threading
-   from pyink import signal
+   from ink import signal
 
    result = signal(None)
 
@@ -513,7 +513,7 @@ the default SIGINT handler unmounts. If you disabled it
 
 ### 7. "My input handler runs on which thread?"
 
-The input-reader thread (`pyink-input-reader`). Signal writes from
+The input-reader thread (`ink-input-reader`). Signal writes from
 inside a key handler are safe (each `Signal` owns its own `RLock`).
 Don't block the handler — it blocks the next keystroke. `use_app
 ().exit()` from inside a handler is safe.

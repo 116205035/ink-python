@@ -24,9 +24,9 @@ import sys
 import threading
 import time
 
-from pyink import Box, Static, Text, render, signal
-from pyink.core.element import Element
-from pyink.core.signal import Signal
+from ink import Box, Static, Text, render, signal
+from ink.core.element import Element
+from ink.core.signal import Signal
 
 
 def App() -> Element:

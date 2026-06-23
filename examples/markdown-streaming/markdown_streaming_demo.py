@@ -15,7 +15,7 @@ Optional dependencies: requires both ``markdown-it-py`` and Pygments
 (for highlighted code blocks inside the rendered Markdown). Install
 with::
 
-    pip install pyink[all]
+    pip install ink[all]
 
 Partial-source handling: ``markdown-it-py`` parses what it can. An
 unclosed fence (```` ``` ```` without a matching close) renders as a
@@ -37,10 +37,10 @@ import sys
 import threading
 import time
 
-from pyink import Box, Text, create_element, render, signal, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import Markdown
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, signal, use_app, use_input
+from ink.core.element import Element
+from ink.externals import Markdown
+from ink.render.keys import Key
 
 #: The Markdown source the worker drips into the buffer one character
 #: at a time. Picked to span headings, paragraphs, lists and a fenced
@@ -101,7 +101,7 @@ def MarkdownStreamingDemo() -> Element:
         return Box(
             Text("Streaming Markdown demo", bold=True),
             Text(
-                "pip install pyink[all]  — Esc / Ctrl+C to quit",
+                "pip install ink[all]  — Esc / Ctrl+C to quit",
                 dimColor=True,
             ),
             Markdown(buffer),

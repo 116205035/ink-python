@@ -1,7 +1,7 @@
-"""Tests for :func:`pyink.externals.SelectInput` (Phase 4 PR3).
+"""Tests for :func:`ink.externals.SelectInput` (Phase 4 PR3).
 
-We exercise the component through the live :func:`pyink.render.render`
-pipeline because ``SelectInput`` mounts :func:`pyink.hooks.use_input`,
+We exercise the component through the live :func:`ink.render.render`
+pipeline because ``SelectInput`` mounts :func:`ink.hooks.use_input`,
 whose guard requires the active ``_current_instance`` ContextVar that
 only ``render`` sets up. The mount / feed / unmount helpers mirror
 :mod:`tests.externals.test_text_input` so the two suites share a
@@ -19,13 +19,13 @@ from typing import Any
 
 import pytest
 
-from pyink import render
-from pyink.core.element import Element
-from pyink.externals import SelectInput
-from pyink.externals.select_input import _normalize_items, _SelectInputImpl
-from pyink.render import terminal as _term_mod
-from pyink.render.instance import Instance
-from pyink.render.terminal import Terminal
+from ink import render
+from ink.core.element import Element
+from ink.externals import SelectInput
+from ink.externals.select_input import _normalize_items, _SelectInputImpl
+from ink.render import terminal as _term_mod
+from ink.render.instance import Instance
+from ink.render.terminal import Terminal
 
 #: Regex that matches any CSI / OSC escape sequence (used to strip ANSI
 #: when asserting on visible buffer content).
@@ -271,16 +271,16 @@ def test_normalize_empty_list_returns_empty_list() -> None:
 
 
 def test_externals_init_exports_select_input() -> None:
-    from pyink.externals import SelectInput as InitSelectInput
+    from ink.externals import SelectInput as InitSelectInput
 
     assert InitSelectInput is SelectInput
 
 
-def test_select_input_not_in_pyink_top_level() -> None:
+def test_select_input_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "SelectInput"), (
+    assert not hasattr(ink, "SelectInput"), (
         "SelectInput must NOT be top-level"
     )
 

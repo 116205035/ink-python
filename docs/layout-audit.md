@@ -1,6 +1,6 @@
 # 核心布局逻辑分析报告
 
-> 范围：`src/pyink/layout/flex.py`（`_layout_node` / `_layout_row` / `_layout_column` / `_distribute_main` / `_position_main`）与 `src/pyink/layout/render_layout.py`（绘制与裁剪），结合本次两个修复（`Submitted:` 行右侧溢出、多行输入光标视口）。
+> 范围：`src/ink/layout/flex.py`（`_layout_node` / `_layout_row` / `_layout_column` / `_distribute_main` / `_position_main`）与 `src/ink/layout/render_layout.py`（绘制与裁剪），结合本次两个修复（`Submitted:` 行右侧溢出、多行输入光标视口）。
 
 ## 一、当前实现已处理得当的部分
 
@@ -45,7 +45,7 @@ shrink 只做一趟，没有"min-content 违例 → 重新分配"的迭代。嵌
 ### 5.【低】本次新增逻辑的两点假设 / 耦合
 
 - `_wrapped_width` 在 renderer 重跑时清空（`flex.py` 约 899 行）——依赖"最后一趟用的是最终宽度"。对 truncate 成立；对 `wrap` 模式的 callable 文本叶子（如某些反应式渲染）理论上可能让高度收敛不稳定。目前只有 Markdown 走这条路且测试通过，但这是一个隐含契约。
-- `_pyink_scroll` 是挂在**公共 `Text`** 上的私有 prop（`text_input.py` 约 1267 行 + `render_layout` 读取）。功能上惰性、安全，但它把一个内部约定暴露在公共组件的 props 面上，且通过"共享可变 dict 侧信道"传递动态光标行——可读性 / 可维护性偏弱，文档里没有体现。
+- `_ink_scroll` 是挂在**公共 `Text`** 上的私有 prop（`text_input.py` 约 1267 行 + `render_layout` 读取）。功能上惰性、安全，但它把一个内部约定暴露在公共组件的 props 面上，且通过"共享可变 dict 侧信道"传递动态光标行——可读性 / 可维护性偏弱，文档里没有体现。
 
 ### 6.【低 / 代码异味】`main_is_fixed` 计算了却没被使用
 

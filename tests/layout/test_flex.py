@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from pyink.core.element import Element, create_element
-from pyink.render import render_to_string
+from ink.core.element import Element, create_element
+from ink.render import render_to_string
 
 
 def box(*children: Any, **props: Any) -> Element:
@@ -1040,7 +1040,7 @@ def test_clip_lines_to_height_keeps_cursor_row_visible() -> None:
     row the cursor sits on (Regression: cursor on the last line vanished
     because the top-keeping clip dropped the bottom rows).
     """
-    from pyink.layout.render_layout import _clip_lines_to_height
+    from ink.layout.render_layout import _clip_lines_to_height
 
     lines = ["L0", "L1", "L2", "L3", "L4", "L5"]
     # No scroll prop → leading rows.
@@ -1226,8 +1226,8 @@ def test_shrink_clamps_to_min_content_text_leaf() -> None:
     size, so the three leaves get distinct ``layout_y`` offsets (no two
     share the same row).
     """
-    from pyink.core.reconciler import Reconciler
-    from pyink.layout import layout
+    from ink.core.reconciler import Reconciler
+    from ink.layout import layout
 
     tree = box(
         text("aaa"),
@@ -1264,8 +1264,8 @@ def test_shrink_redistributes_overflow() -> None:
     min-content (1 row) and any leftover overflow is absorbed by the
     remaining shrinkable children rather than ignored.
     """
-    from pyink.core.reconciler import Reconciler
-    from pyink.layout import layout
+    from ink.core.reconciler import Reconciler
+    from ink.layout import layout
 
     # Three children: short (1 row), tall (3 rows each). Container has
     # only 4 rows of room → overflow = (1 + 3 + 3) - 4 = 3 rows to shed.
@@ -1310,8 +1310,8 @@ def test_shrink_all_at_min_content_no_overlap() -> None:
     still get distinct ``layout_y`` offsets (no overlap), even though
     the column overflows the container's content box.
     """
-    from pyink.core.reconciler import Reconciler
-    from pyink.layout import layout
+    from ink.core.reconciler import Reconciler
+    from ink.layout import layout
 
     tree = box(
         text("a"),
@@ -1347,8 +1347,8 @@ def test_row_min_content_is_max_child_width() -> None:
     — a text leaf) rather than collapsing to 0. The row keeps every
     child on a distinct x column.
     """
-    from pyink.core.reconciler import Reconciler
-    from pyink.layout import layout
+    from ink.core.reconciler import Reconciler
+    from ink.layout import layout
 
     # Three text-leaf children wider than the container; each has
     # min_content_main = 1 (text leaf default).
@@ -1391,8 +1391,8 @@ def test_flex_shrink_syncs_measured_width() -> None:
     consults ``measured_width`` after shrink would otherwise see a
     stale intrinsic value. The fix makes the invariant explicit.
     """
-    from pyink.core.reconciler import Reconciler
-    from pyink.layout.flex import build_flex_tree, layout_root
+    from ink.core.reconciler import Reconciler
+    from ink.layout.flex import build_flex_tree, layout_root
 
     # Two wide text leaves forced to share a narrow row container.
     # Each child is itself a text leaf — the shrink pass re-runs the
@@ -1429,8 +1429,8 @@ def test_flex_shrink_syncs_measured_height_column() -> None:
 
     Same regression as the row case but for the column main axis (height).
     """
-    from pyink.core.reconciler import Reconciler
-    from pyink.layout.flex import build_flex_tree, layout_root
+    from ink.core.reconciler import Reconciler
+    from ink.layout.flex import build_flex_tree, layout_root
 
     tree = box(
         box(text("aaaa\nbbbb\ncccc"), flexShrink=1),

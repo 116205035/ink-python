@@ -6,7 +6,7 @@ Per Decision 13, every Box / Text style prop (``color`` / ``bold`` /
 layout pass — i.e. inside the render-loop effect's tracking context —
 so any ``signal.value`` reads inside it establish subscriptions.
 
-These tests mount the tree via the live :func:`pyink.render.render`
+These tests mount the tree via the live :func:`ink.render.render`
 pipeline (``render_to_string`` is purely synchronous and does not
 establish subscriptions), mutate the signal, then inspect stdout to
 verify the new frame reflects the new value.
@@ -18,10 +18,10 @@ import io
 import time
 from typing import Any
 
-from pyink import Box, Text, render
-from pyink.core.element import Element, create_element
-from pyink.core.signal import Signal, signal
-from pyink.render.instance import Instance
+from ink import Box, Text, render
+from ink.core.element import Element, create_element
+from ink.core.signal import Signal, signal
+from ink.render.instance import Instance
 
 ESC = "\x1b"
 

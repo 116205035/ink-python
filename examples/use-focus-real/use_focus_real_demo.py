@@ -1,7 +1,7 @@
 """use_focus example — the real focus hooks (Phase 2 PR6).
 
 Reference: ink's ``examples/use-focus/``. PyInk ships
-:func:`pyink.use_focus` + :func:`pyink.use_focus_manager` in Phase 2 —
+:func:`ink.use_focus` + :func:`ink.use_focus_manager` in Phase 2 —
 this example uses them directly, replacing the hand-rolled ``signal``-based
 ``examples/use-focus/use_focus_demo.py`` from the MVP.
 
@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import sys
 
-from pyink import (
+from ink import (
     Box,
     Text,
     create_element,
@@ -37,8 +37,8 @@ from pyink import (
     use_focus_manager,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.render.keys import Key
 
 #: Each focusable box carries a stable id so the key handler can jump to
 #: it via ``focus(id=...)``. The label is shown inside the box.

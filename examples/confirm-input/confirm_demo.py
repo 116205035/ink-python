@@ -1,7 +1,7 @@
 """ConfirmInput example — Y/N confirmation prompts (Phase 4 PR4).
 
 Reference: ink's third-party ``ink-confirm-input`` component. PyInk's
-:func:`pyink.externals.ConfirmInput` external supports both the
+:func:`ink.externals.ConfirmInput` external supports both the
 default single-keystroke mode (``y`` / ``n`` fire immediately) and
 the more deliberate ``require_enter=True`` mode where the user picks
 a side first and then confirms with Enter.
@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import sys
 
-from pyink import (
+from ink import (
     Box,
     Text,
     create_element,
@@ -44,10 +44,10 @@ from pyink import (
     use_app,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.core.signal import Signal
-from pyink.externals import ConfirmInput
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.core.signal import Signal
+from ink.externals import ConfirmInput
+from ink.render.keys import Key
 
 
 def _status_signal() -> Signal[str]:

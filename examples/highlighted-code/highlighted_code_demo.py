@@ -10,7 +10,7 @@ individual Pygments token classes.
 
 Optional dependency: requires Pygments. Install with::
 
-    pip install pyink[highlight]
+    pip install ink[highlight]
 
 Without Pygments installed, ``HighlightedCode`` raises an ``ImportError``
 with the same hint on first call.
@@ -28,10 +28,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import HighlightedCode
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import HighlightedCode
+from ink.render.keys import Key
 
 #: A short Python snippet covering most token families (keywords,
 #: builtins, function names, strings, numbers, comments, decorators).
@@ -68,7 +68,7 @@ LIMIT 10;
 #: A JSON snippet — keys, string values, numbers, booleans, null.
 JSON_SNIPPET: str = """\
 {
-  "name": "pyink",
+  "name": "ink",
   "version": "0.1.0",
   "tags": ["tui", "signals"],
   "active": true,
@@ -103,7 +103,7 @@ def HighlightedCodeDemo() -> Element:
 
         return Box(
             Text("HighlightedCode demo", bold=True),
-            Text("pip install pyink[highlight]  — Esc / Ctrl+C to quit", dimColor=True),
+            Text("pip install ink[highlight]  — Esc / Ctrl+C to quit", dimColor=True),
             Text("Python:", dimColor=True),
             Box(HighlightedCode(PYTHON_SNIPPET, language="python"), padding=0),
             Text("JavaScript:", dimColor=True),

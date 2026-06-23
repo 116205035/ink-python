@@ -1,11 +1,11 @@
-"""Tests for :func:`pyink.externals.Markdown` (Phase 3 PR3).
+"""Tests for :func:`ink.externals.Markdown` (Phase 3 PR3).
 
 Like :mod:`tests.externals.test_divider` and
 :mod:`tests.externals.test_highlighted_code`, we exercise the synchronous
-:func:`pyink.render_to_string` test renderer for the static ``str`` fast
+:func:`ink.render_to_string` test renderer for the static ``str`` fast
 path — ``Markdown`` is a declarative factory for ``str`` sources (no
 hooks, no function component). The reactive ``Signal`` / ``Callable``
-branch goes through the live :func:`pyink.render.render` pipeline
+branch goes through the live :func:`ink.render.render` pipeline
 (matching :mod:`tests.externals.test_streaming_text`) so the function
 component is mounted by the reconciler and a signal write can be
 observed to trigger a re-render.
@@ -28,8 +28,8 @@ Coverage (per PR3 scope):
 * Theme override.
 * Missing ``markdown_it`` friendly ``ImportError``.
 * Integration: ``Markdown`` inside a parent ``Box`` with a border.
-* ``Markdown`` is exported from ``pyink.externals`` but NOT from the
-  top-level ``pyink`` package (PRD Decision 5 — externals stay opt-in).
+* ``Markdown`` is exported from ``ink.externals`` but NOT from the
+  top-level ``ink`` package (PRD Decision 5 — externals stay opt-in).
 """
 
 from __future__ import annotations
@@ -43,10 +43,10 @@ from typing import Any
 
 import pytest
 
-from pyink import Box, render, render_to_string, signal
-from pyink.core.element import Element
-from pyink.externals import DEFAULT_MARKDOWN_THEME, Markdown
-from pyink.externals.markdown import _MarkdownImpl
+from ink import Box, render, render_to_string, signal
+from ink.core.element import Element
+from ink.externals import DEFAULT_MARKDOWN_THEME, Markdown
+from ink.externals.markdown import _MarkdownImpl
 
 ESC = "\x1b"
 
@@ -67,7 +67,7 @@ def _markdown_it_available() -> bool:
 
 pytestmark = pytest.mark.skipif(
     not _markdown_it_available(),
-    reason="markdown-it-py not installed (pip install pyink[markdown])",
+    reason="markdown-it-py not installed (pip install ink[markdown])",
 )
 
 
@@ -540,7 +540,7 @@ def test_signal_source_nested_border_box_does_not_scramble() -> None:
     right-edge characters on the code-bearing rows.
 
     The fix exposes the layout-time measurement width to width-aware
-    text renderers (see ``pyink.layout._text_width_context``) so the
+    text renderers (see ``ink.layout._text_width_context``) so the
     Markdown snapshot is sized to the actual content box.
 
     We grow the buffer character-by-character and at the final state
@@ -721,7 +721,7 @@ def test_missing_markdown_it_raises_friendly_import_error(
         Markdown("# Hi")
     msg = str(excinfo.value)
     assert "markdown-it-py" in msg
-    assert "pip install pyink[markdown]" in msg
+    assert "pip install ink[markdown]" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -779,17 +779,17 @@ def test_full_document_renders_all_blocks() -> None:
 
 
 def test_markdown_exported_from_externals() -> None:
-    from pyink import externals
+    from ink import externals
 
     assert externals.Markdown is Markdown
     assert externals.DEFAULT_MARKDOWN_THEME is DEFAULT_MARKDOWN_THEME
 
 
 def test_markdown_not_in_top_level_namespace() -> None:
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "Markdown"), (
-        "Markdown should not be exported from the top-level pyink namespace"
+    assert not hasattr(ink, "Markdown"), (
+        "Markdown should not be exported from the top-level ink namespace"
     )
 
 
@@ -809,7 +809,7 @@ def test_markdown_not_in_top_level_namespace() -> None:
 
 _pygments_mark = pytest.mark.skipif(
     not _pygments_available(),
-    reason="pygments not installed (pip install pyink[highlight])",
+    reason="pygments not installed (pip install ink[highlight])",
 )
 
 
@@ -1111,7 +1111,7 @@ def test_reactive_render_cache_hits_avoid_repeated_parse() -> None:
     signal flush re-parses the whole document twice. We assert the
     cache key is hit on the second call with the same input.
     """
-    from pyink.externals.markdown import _cached_render, _render_cache
+    from ink.externals.markdown import _cached_render, _render_cache
 
     _render_cache.clear()
     theme: dict[str, Any] = {"_test": True}
@@ -1126,7 +1126,7 @@ def test_reactive_render_cache_hits_avoid_repeated_parse() -> None:
 
 def test_reactive_render_cache_evicts_lru_entries() -> None:
     """The cache is bounded; inserting past the cap evicts the oldest."""
-    from pyink.externals import markdown as md_mod
+    from ink.externals import markdown as md_mod
 
     md_mod._render_cache.clear()
     theme: dict[str, Any] = {}

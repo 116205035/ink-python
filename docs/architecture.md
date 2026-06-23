@@ -37,7 +37,7 @@ The rest of this document walks through each subsystem and explains
 
 ## Reactive Model
 
-Five primitives live in `pyink.core.signal`:
+Five primitives live in `ink.core.signal`:
 
 - **`signal(initial)`** — a writable, observable cell. Read via
   `.value`, write via `.value = x`. Reading inside an `effect` /
@@ -142,7 +142,7 @@ inside a periodic tick.
 
 ## Reconciler
 
-The reconciler (`pyink.core.reconciler`) turns an `Element` tree into
+The reconciler (`ink.core.reconciler`) turns an `Element` tree into
 an `Instance` tree. It exposes two operations:
 
 - `Reconciler.mount(element, parent=None) -> Instance | None`
@@ -243,7 +243,7 @@ remembers.
 
 ### Context stack
 
-The Context system (`pyink.core.context`) backs `use_context`,
+The Context system (`ink.core.context`) backs `use_context`,
 `Provider`, `use_focus`, and `use_focus_manager`. It is a flat
 `ContextVar` holding a list of `(ctx_id, value)` pairs.
 
@@ -274,7 +274,7 @@ documented below.
    reconciler's `Instance` tree and produces a flat `FlexNode` tree.
    Function-component instances are skipped (only host nodes survive).
    `"provider"` hosts collapse to a fragment of their children.
-   `_pyink_static=True` boxes (sentinels emitted by `Static`) return
+   `_ink_static=True` boxes (sentinels emitted by `Static`) return
    `None` so they never participate in layout.
 2. **`layout_root(flex_root, columns, rows) -> LayoutNode`** — runs the
    recursive `_layout_node` pass, applies root margin, and produces
@@ -384,7 +384,7 @@ reactive `scroll_offset` without a separate "reactive prop" API.
 
 ## Render Pipeline
 
-The render pipeline (`pyink.render.pipeline` + `instance` + `diff`)
+The render pipeline (`ink.render.pipeline` + `instance` + `diff`)
 mounts the tree, runs the render loop, and writes ANSI to stdout.
 
 ### Inline mode is the default
@@ -556,15 +556,15 @@ keeps the focus hooks free of any input-parsing dependency.
 
 ## Externals Pattern
 
-"Externals" (`pyink.externals`) are opt-in components that carry heavier
+"Externals" (`ink.externals`) are opt-in components that carry heavier
 dependencies or non-essential surface area. They are imported
 explicitly:
 
 ```python
-from pyink.externals import Spinner, Markdown
+from ink.externals import Spinner, Markdown
 ```
 
-…and are **not** re-exported from the top-level `pyink` namespace.
+…and are **not** re-exported from the top-level `ink` namespace.
 
 ### Lazy import + optional-dependencies
 
@@ -578,14 +578,14 @@ def HighlightedCode(code, *, language="text", ...):
     except ImportError as exc:
         raise ImportError(
             "HighlightedCode requires pygments. "
-            "Install with: pip install pyink[highlight]"
+            "Install with: pip install ink[highlight]"
         ) from exc
     ...
 ```
 
-This means `pip install pyink` gets you the core; `pip install
-pyink[highlight]` adds Pygments; `pip install pyink[markdown]` adds
-`markdown-it-py`; `pip install pyink[all]` gets both. The optional
+This means `pip install ink` gets you the core; `pip install
+ink[highlight]` adds Pygments; `pip install ink[markdown]` adds
+`markdown-it-py`; `pip install ink[all]` gets both. The optional
 group only matters when the component is actually used.
 
 ### Factory + Impl split
@@ -612,10 +612,10 @@ PyInk is fully synchronous; concurrency is handled by daemon threads.
 | Thread | Started by | Lifetime | Purpose |
 |---|---|---|---|
 | Main thread | Caller | Until `Instance.wait_until_exit()` returns | Runs `render()` and blocks on the exit event |
-| `pyink-fps-throttle` | `_FpsThrottle.__init__` | Until `throttle.stop()` | Coalesces signal bursts into paints |
-| `pyink-input-reader` | `Terminal.enable_input` | Until last `on_key` subscriber unsubscribes | Reads stdin, parses keys, dispatches callbacks |
-| `pyink-interval-N` | `use_interval` | Until dispose / unmount | Ticks `callback` every `interval_ms` |
-| `pyink-resize-poll` | `Terminal.on_resize` (Windows / non-TTY) | Until last `on_resize` callback unsubscribes | Polls terminal size every 200ms |
+| `ink-fps-throttle` | `_FpsThrottle.__init__` | Until `throttle.stop()` | Coalesces signal bursts into paints |
+| `ink-input-reader` | `Terminal.enable_input` | Until last `on_key` subscriber unsubscribes | Reads stdin, parses keys, dispatches callbacks |
+| `ink-interval-N` | `use_interval` | Until dispose / unmount | Ticks `callback` every `interval_ms` |
+| `ink-resize-poll` | `Terminal.on_resize` (Windows / non-TTY) | Until last `on_resize` callback unsubscribes | Polls terminal size every 200ms |
 
 All threads are daemons, so they die with the process if the caller
 forgets to `unmount()`.
@@ -649,7 +649,7 @@ thread (e.g. `unmount` triggering an `on_exit` callback that calls
 ## File layout
 
 ```
-src/pyink/
+src/ink/
     __init__.py            # public API re-exports
     core/
         signal.py          # signals engine

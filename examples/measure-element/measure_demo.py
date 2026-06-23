@@ -4,9 +4,9 @@ Reference: ink's ``measureElement`` API + the related
 ``examples/measure-element`` demo. PyInk exposes the same surface as two
 entry points:
 
-* :func:`pyink.measure_element` — imperative snapshot.
-* :func:`pyink.use_box_metrics` — reactive subscription returning a
-  :class:`pyink.Computed` of :class:`pyink.BoxMetrics`.
+* :func:`ink.measure_element` — imperative snapshot.
+* :func:`ink.use_box_metrics` — reactive subscription returning a
+  :class:`ink.Computed` of :class:`ink.BoxMetrics`.
 
 This demo:
 
@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import sys
 
-from pyink import (
+from ink import (
     Box,
     Text,
     create_element,
@@ -41,10 +41,10 @@ from pyink import (
     use_box_metrics,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.core.signal import Ref, ref
-from pyink.layout import LayoutNode
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.core.signal import Ref, ref
+from ink.layout import LayoutNode
+from ink.render.keys import Key
 
 #: Below this measured width the demo collapses to its short label.
 NARROW_THRESHOLD: int = 60

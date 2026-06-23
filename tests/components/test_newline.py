@@ -1,10 +1,10 @@
-"""Tests for :func:`pyink.components.Newline` (PR4)."""
+"""Tests for :func:`ink.components.Newline` (PR4)."""
 
 from __future__ import annotations
 
-from pyink import Box, Newline, Text, render_to_string
-from pyink.components.newline import Newline as NewlineDirect
-from pyink.core.element import Element
+from ink import Box, Newline, Text, render_to_string
+from ink.components.newline import Newline as NewlineDirect
+from ink.core.element import Element
 
 ESC = "\x1b"
 

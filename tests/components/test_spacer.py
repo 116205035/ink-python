@@ -1,10 +1,10 @@
-"""Tests for :func:`pyink.components.Spacer` (PR4)."""
+"""Tests for :func:`ink.components.Spacer` (PR4)."""
 
 from __future__ import annotations
 
-from pyink import Box, Spacer, Text, render_to_string
-from pyink.components.spacer import Spacer as SpacerDirect
-from pyink.core.element import Element
+from ink import Box, Spacer, Text, render_to_string
+from ink.components.spacer import Spacer as SpacerDirect
+from ink.core.element import Element
 
 
 def test_spacer_creates_box_element() -> None:

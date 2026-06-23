@@ -28,10 +28,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import Gradient
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import Gradient
+from ink.render.keys import Key
 
 
 def GradientDemo() -> Element:
@@ -63,7 +63,7 @@ def GradientDemo() -> Element:
             ),
             Text("Hex endpoints (RGB rainbow):", dimColor=True),
             Gradient(
-                "pyink gradient demo",
+                "ink gradient demo",
                 colors=["#ff0000", "#00ff00", "#0000ff"],
             ),
             Text("Bright variants:", dimColor=True),

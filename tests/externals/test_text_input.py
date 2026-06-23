@@ -1,7 +1,7 @@
-"""Tests for :func:`pyink.externals.TextInput` (Phase 4 PR1).
+"""Tests for :func:`ink.externals.TextInput` (Phase 4 PR1).
 
-We exercise the component through the live :func:`pyink.render.render`
-pipeline because ``TextInput`` mounts :func:`pyink.hooks.use_input`,
+We exercise the component through the live :func:`ink.render.render`
+pipeline because ``TextInput`` mounts :func:`ink.hooks.use_input`,
 whose guard requires the active ``_current_instance`` ContextVar that
 only ``render`` sets up — the synchronous :func:`render_to_string`
 renderer would refuse the hook.
@@ -26,14 +26,14 @@ from collections.abc import Callable, Iterator
 
 import pytest
 
-from pyink import Box, Text, render
-from pyink.core.element import Element
-from pyink.core.signal import signal
-from pyink.externals import TextInput
-from pyink.externals.text_input import _TextInputImpl, cursor_column, cursor_line
-from pyink.render import terminal as _term_mod
-from pyink.render.instance import Instance
-from pyink.render.terminal import Terminal
+from ink import Box, Text, render
+from ink.core.element import Element
+from ink.core.signal import signal
+from ink.externals import TextInput
+from ink.externals.text_input import _TextInputImpl, cursor_column, cursor_line
+from ink.render import terminal as _term_mod
+from ink.render.instance import Instance
+from ink.render.terminal import Terminal
 
 ESC = "\x1b"
 
@@ -243,16 +243,16 @@ def test_text_input_initial_value_clipped_to_max_length() -> None:
 
 
 def test_externals_init_exports_text_input() -> None:
-    from pyink.externals import TextInput as InitTextInput
+    from ink.externals import TextInput as InitTextInput
 
     assert InitTextInput is TextInput
 
 
-def test_text_input_not_in_pyink_top_level() -> None:
+def test_text_input_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "TextInput"), "TextInput must NOT be top-level"
+    assert not hasattr(ink, "TextInput"), "TextInput must NOT be top-level"
 
 
 # ---------------------------------------------------------------------------
@@ -2210,7 +2210,7 @@ def test_cursor_survives_per_line_truncation_long_content(
     renderer's per-row ``rstrip`` would then eat (cursor cell became
     an un-reset space at end of row → stripped → cursor "vanished").
 
-    The cursor-aware pre-truncation in :mod:`pyink.externals.text_input`
+    The cursor-aware pre-truncation in :mod:`ink.externals.text_input`
     preserves the cursor cell + its reset escape so the cursor stays
     visible even when its row is truncated.
     """
@@ -2291,7 +2291,7 @@ def test_take_visible_cells_preserves_cursor_sgr_mid_string() -> None:
     The fix flushes pending escapes into ``out`` *before* the next visible
     char so the cursor's SGR open + reset both survive into the prefix.
     """
-    from pyink.externals.text_input import _take_visible_cells
+    from ink.externals.text_input import _take_visible_cells
 
     # Block cursor over 'a' (green + inverse), then more visible text.
     s = f"{ESC}[32m{ESC}[7ma{ESC}[0mbcdef"
@@ -2304,7 +2304,7 @@ def test_take_visible_cells_preserves_cursor_sgr_mid_string() -> None:
 
 def test_take_visible_cells_preserves_mid_string_cursor_sgr() -> None:
     """Cursor SGR in the middle of the visible prefix survives the cut."""
-    from pyink.externals.text_input import _take_visible_cells
+    from ink.externals.text_input import _take_visible_cells
 
     # Cursor over 'b' in "abcdef", keep width 3.
     s = f"a{ESC}[7mb{ESC}[0mcdef"
@@ -2319,7 +2319,7 @@ def test_take_visible_cells_drops_unclosed_cursor_when_past_width() -> None:
     inverse video on for everything painted afterwards — the classic
     "cursor covering multiple chars" visual bug.
     """
-    from pyink.externals.text_input import _take_visible_cells
+    from ink.externals.text_input import _take_visible_cells
 
     # Block cursor at end-of-input (inverse space). Width=3 keeps only
     # 'abc'; the cursor's open `\x1b[7m` must be stripped so it doesn't
@@ -2330,7 +2330,7 @@ def test_take_visible_cells_drops_unclosed_cursor_when_past_width() -> None:
 
 def test_take_visible_cells_keeps_trailing_reset_escape() -> None:
     """A lone trailing reset (``\\x1b[0m``) at the cut point survives."""
-    from pyink.externals.text_input import _take_visible_cells
+    from ink.externals.text_input import _take_visible_cells
 
     s = f"ab{ESC}[0m"
     assert _take_visible_cells(s, 2) == f"ab{ESC}[0m"
@@ -2840,8 +2840,8 @@ def test_cursor_position_with_cjk_chars_block() -> None:
     character before the cursor. The cursor SGR now lands at the exact
     visible column (display width of the prefix).
     """
-    from pyink.externals.text_input import _build_displayed_line
-    from pyink.layout.measure import string_width
+    from ink.externals.text_input import _build_displayed_line
+    from ink.layout.measure import string_width
 
     # value = "你好abc"; cursor between '好' and 'a' (local_cursor = 2).
     # Display columns: 你=0-2, 好=2-4, a=4-5, b=5-6, c=6-7.
@@ -2873,8 +2873,8 @@ def test_cursor_position_with_cjk_chars_block() -> None:
 
 def test_cursor_position_with_cjk_chars_bar() -> None:
     """Bar cursor between CJK and ASCII inserts at the right visible column."""
-    from pyink.externals.text_input import _build_displayed_line
-    from pyink.layout.measure import string_width
+    from ink.externals.text_input import _build_displayed_line
+    from ink.layout.measure import string_width
 
     # value = "你好abc"; cursor between 好 and a (local_cursor = 2, visible col = 4).
     line = "你好abc"
@@ -2901,8 +2901,8 @@ def test_cursor_position_with_cjk_chars_bar() -> None:
 
 def test_cursor_position_with_mixed_width() -> None:
     """Cursor before a CJK char following an ASCII char stays aligned."""
-    from pyink.externals.text_input import _build_displayed_line
-    from pyink.layout.measure import string_width
+    from ink.externals.text_input import _build_displayed_line
+    from ink.layout.measure import string_width
 
     # value = "a你好"; cursor before 你 (local_cursor = 1, visible col = 1).
     line = "a你好"
@@ -2930,8 +2930,8 @@ def test_cursor_position_with_mixed_width() -> None:
 
 def test_cursor_position_with_cjk_at_end() -> None:
     """Cursor past the last CJK character lands at the line's full width."""
-    from pyink.externals.text_input import _build_displayed_line
-    from pyink.layout.measure import string_width
+    from ink.externals.text_input import _build_displayed_line
+    from ink.layout.measure import string_width
 
     # value = "你好"; cursor at end (local_cursor = 2, visible col = 4).
     line = "你好"
@@ -2971,12 +2971,12 @@ def test_truncate_around_cursor_with_cjk() -> None:
     Edge cases where the window boundary splits a wide character are
     tracked separately under Bug 1's clip-to-box work.
     """
-    from pyink.externals.text_input import (
+    from ink.externals.text_input import (
         _build_displayed_line,
         _cursor_visible_column,
         _truncate_line_around_cursor,
     )
-    from pyink.layout.measure import string_width
+    from ink.layout.measure import string_width
 
     # 3 CJK chars (width 6) + 3 ASCII = 9 visible cells.
     line = "你好世abc"
@@ -3068,8 +3068,8 @@ def test_mask_with_wide_glyph_stays_aligned() -> None:
     The width-based walk in :func:`_build_displayed_line` keeps the
     two aligned regardless of mask glyph width.
     """
-    from pyink.externals.text_input import _build_displayed_line
-    from pyink.layout.measure import string_width
+    from ink.externals.text_input import _build_displayed_line
+    from ink.layout.measure import string_width
 
     # Mask = 你 (width 2). value = "abc"; cursor after 'b' (local_cursor = 2).
     # Masked line = "你你你" (visible width 6). Cursor visible column = 4.
@@ -3106,7 +3106,7 @@ def test_bug6_distribute_main_has_no_fixed_parameter() -> None:
     """
     import inspect
 
-    from pyink.layout.flex import _distribute_main
+    from ink.layout.flex import _distribute_main
 
     sig = inspect.signature(_distribute_main)
     assert "fixed" not in sig.parameters, (

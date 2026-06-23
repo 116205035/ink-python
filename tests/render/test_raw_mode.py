@@ -1,4 +1,4 @@
-"""Tests for raw-mode + on_key on :class:`pyink.render.terminal.Terminal`.
+"""Tests for raw-mode + on_key on :class:`ink.render.terminal.Terminal`.
 
 The Terminal raw-mode entry/exit logic is Unix-only and would mess with
 the test runner's own stdin. These tests use monkey-patching to fake a
@@ -15,9 +15,9 @@ from unittest.mock import patch
 
 import pytest
 
-from pyink.render import terminal as _term_mod
-from pyink.render.keys import Key
-from pyink.render.terminal import Terminal
+from ink.render import terminal as _term_mod
+from ink.render.keys import Key
+from ink.render.terminal import Terminal
 
 
 class _FakeTTY(io.StringIO):

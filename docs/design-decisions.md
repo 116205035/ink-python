@@ -114,7 +114,7 @@ measurement.
 
 **Consequences**:
 
-- *Pros*: `pip install pyink` works on every Python 3.11+ platform
+- *Pros*: `pip install ink` works on every Python 3.11+ platform
   with no compiler toolchain. The engine is ~1600 LOC; a contributor
   can hold it in their head.
 - *Cons*: The subset is intentionally limited. Percentages,
@@ -341,18 +341,18 @@ the next dispatch.
 libraries (`markdown-it-py`, `pygments`). Forcing every user to
 install those would bloat the dependency tree.
 
-**Decision**: Externals are opt-in via `from pyink.externals import
+**Decision**: Externals are opt-in via `from ink.externals import
 Markdown`. Each external that needs an extra lazy-imports it inside
-the function body and raises `ImportError("pip install pyink[...]")`
+the function body and raises `ImportError("pip install ink[...]")`
 on first call without the extra installed.
 
 **Consequences**:
 
-- *Pros*: `pip install pyink` stays minimal (just `wcwidth`). Users
-  opt into heavier deps via extras: `pip install pyink[highlight]`,
-  `pip install pyink[markdown]`, `pip install pyink[all]`.
+- *Pros*: `pip install ink` stays minimal (just `wcwidth`). Users
+  opt into heavier deps via extras: `pip install ink[highlight]`,
+  `pip install ink[markdown]`, `pip install ink[all]`.
 - *Cons*: Users hitting the `ImportError` need to read the message.
-  The message is prescriptive ("pip install pyink[highlight]"), so
+  The message is prescriptive ("pip install ink[highlight]"), so
   this is usually a one-step fix.
 
 ---
@@ -360,17 +360,17 @@ on first call without the extra installed.
 ## 16. `externals` not in top-level namespace
 
 **Context**: Even with lazy imports, having `Markdown` / `Spinner` /
-`TextInput` in the top-level `pyink` namespace would encourage users
+`TextInput` in the top-level `ink` namespace would encourage users
 to import them by default, defeating the optional-dependency split.
 
-**Decision**: Externals live in `pyink.externals` and are **not**
-re-exported from `pyink.__init__`. Users must write `from
-pyink.externals import Spinner`.
+**Decision**: Externals live in `ink.externals` and are **not**
+re-exported from `ink.__init__`. Users must write `from
+ink.externals import Spinner`.
 
 **Consequences**:
 
 - *Pros*: The top-level namespace is lean. IDE autocomplete on
-  `pyink.` shows the core building blocks; heavier externals only
+  `ink.` shows the core building blocks; heavier externals only
   appear when the user opts in.
 - *Cons*: Two import paths to remember. The README and API reference
   call this out explicitly.

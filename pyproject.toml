@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pyink"
-version = "0.1.0"
+name = "ink-python"
+version = "0.2.0"
 description = "Python ink-style TUI framework built on signals"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -37,7 +37,7 @@ Issues = "https://github.com/116205035/PyInk/issues"
 highlight = ["pygments>=2.14"]
 markdown = ["markdown-it-py>=3.0"]
 big-text = ["pyfiglet>=1.0"]
-all = ["pyink[highlight,markdown,big-text]"]
+all = ["ink-python[highlight,markdown,big-text]"]
 dev = [
     "pytest>=7.0",
     "pytest-cov",
@@ -47,7 +47,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pyink"]
+packages = ["src/ink"]
 
 [tool.ruff]
 line-length = 100
@@ -67,7 +67,7 @@ select = [
 
 [tool.mypy]
 strict = true
-files = ["src/pyink", "tests", "examples"]
+files = ["src/ink", "tests", "examples"]
 python_version = "3.11"
 
 [tool.pytest.ini_options]

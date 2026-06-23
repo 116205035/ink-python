@@ -38,8 +38,8 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Spacer, Text, render
-from pyink.core.element import Element
+from ink import Box, Spacer, Text, render
+from ink.core.element import Element
 
 
 def NestedLayout() -> Element:

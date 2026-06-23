@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.components.Box` (PR4).
+"""Tests for :func:`ink.components.Box` (PR4).
 
 Covers:
 
@@ -20,9 +20,9 @@ columns).
 
 from __future__ import annotations
 
-from pyink import Box, Spacer, Text, render_to_string
-from pyink.components.box import Box as BoxDirect
-from pyink.core.element import Element
+from ink import Box, Spacer, Text, render_to_string
+from ink.components.box import Box as BoxDirect
+from ink.core.element import Element
 
 ESC = "\x1b"
 

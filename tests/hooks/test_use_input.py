@@ -1,6 +1,6 @@
-"""Tests for :func:`pyink.hooks.use_input`.
+"""Tests for :func:`ink.hooks.use_input`.
 
-Components mount via :func:`pyink.render.render` so the active-Instance
+Components mount via :func:`ink.render.render` so the active-Instance
 ContextVar is populated. Synthetic input bytes are fed through the
 Terminal's input loop by patching ``_read_stdin_chunk`` + ``_wait_for_input``.
 """
@@ -15,12 +15,12 @@ from typing import cast
 
 import pytest
 
-from pyink import Box, Text, create_element, render, use_input
-from pyink.core.element import Element
-from pyink.core.signal import Signal, effect, signal
-from pyink.render import terminal as _term_mod
-from pyink.render.keys import Key
-from pyink.render.terminal import Terminal
+from ink import Box, Text, create_element, render, use_input
+from ink.core.element import Element
+from ink.core.signal import Signal, effect, signal
+from ink.render import terminal as _term_mod
+from ink.render.keys import Key
+from ink.render.terminal import Terminal
 
 
 class _FakeTTY(io.StringIO):

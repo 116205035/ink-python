@@ -1,9 +1,9 @@
 """TextInput example — single-line + multi-line + password + placeholder.
 
 Reference: ink's ``ink-text-input`` CLI demo. PyInk ships the real
-:func:`pyink.externals.TextInput` external (Phase 4 PR1 + PR2); this
+:func:`ink.externals.TextInput` external (Phase 4 PR1 + PR2); this
 example mounts four inputs side by side inside a
-:func:`pyink.use_focus_manager` subtree so ``Tab`` cycles the active
+:func:`ink.use_focus_manager` subtree so ``Tab`` cycles the active
 input and keystrokes land in whichever input currently has focus.
 
 The four inputs demonstrate:
@@ -50,7 +50,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable
 
-from pyink import (
+from ink import (
     Box,
     Text,
     create_element,
@@ -61,9 +61,9 @@ from pyink import (
     use_focus_manager,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.externals import TextInput
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.externals import TextInput
+from ink.render.keys import Key
 
 
 def _LabeledInput(

@@ -1,7 +1,7 @@
 """SelectInput example — the real external (Phase 4 PR3).
 
 Reference: ink's third-party ``ink-select-input`` component. PyInk
-ships :func:`pyink.externals.SelectInput` in Phase 4 — this example
+ships :func:`ink.externals.SelectInput` in Phase 4 — this example
 mounts it directly to contrast with the hand-rolled
 :mod:`examples.select-input.select_input` demo from the MVP (which
 built the same UX out of ``use_input`` + ``signal`` primitives).
@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import sys
 
-from pyink import (
+from ink import (
     Box,
     Text,
     create_element,
@@ -35,9 +35,9 @@ from pyink import (
     use_app,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.externals import SelectInput
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.externals import SelectInput
+from ink.render.keys import Key
 
 #: The showcase list — same fruit set as the MVP-era
 #: ``examples/select-input`` demo so the two can be compared directly.

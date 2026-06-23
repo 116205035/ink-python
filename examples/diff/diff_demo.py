@@ -19,7 +19,7 @@ The demo mounts three variants side by side:
 Optional dependency: per-line syntax highlighting requires Pygments.
 Install with::
 
-    pip install pyink[highlight]
+    pip install ink[highlight]
 
 Without Pygments installed, the diff machinery still works — the
 ``+`` / ``-`` rows just render as plain coloured ``Text``.
@@ -37,10 +37,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import StructuredDiff
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import StructuredDiff
+from ink.render.keys import Key
 
 #: The "before" snapshot — a small Python module.
 BEFORE: str = """\
@@ -93,7 +93,7 @@ def DiffDemo() -> Element:
         return Box(
             Text("StructuredDiff demo", bold=True),
             Text(
-                "pip install pyink[highlight] for syntax-highlighted diff "
+                "pip install ink[highlight] for syntax-highlighted diff "
                 "— Esc / Ctrl+C to quit",
                 dimColor=True,
             ),

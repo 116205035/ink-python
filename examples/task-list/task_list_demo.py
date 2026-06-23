@@ -1,7 +1,7 @@
 """TaskList example — task-state list with per-task spinner (Phase 6 PR1).
 
 Reference: ink-task-list's CLI demo. PyInk ships the canonical
-:func:`pyink.externals.TaskList` + :class:`TaskItem` pair; this example
+:func:`ink.externals.TaskList` + :class:`TaskItem` pair; this example
 mounts a 5-task pipeline (3 already done, 1 running, 1 pending) and a
 background thread advances the pending / running tasks through their
 lifecycle every 2 seconds until every row reaches a terminal state.
@@ -25,11 +25,11 @@ import sys
 import threading
 import time
 
-from pyink import Box, Text, create_element, render, signal, use_app, use_input
-from pyink.core.element import Element
-from pyink.core.signal import Signal
-from pyink.externals import TaskItem, TaskList
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, signal, use_app, use_input
+from ink.core.element import Element
+from ink.core.signal import Signal
+from ink.externals import TaskItem, TaskList
+from ink.render.keys import Key
 
 #: Seconds between background state transitions. Slow enough that the
 #: spinner frame animates visibly before the row flips to ``done``.

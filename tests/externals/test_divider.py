@@ -1,11 +1,11 @@
-"""Tests for :func:`pyink.externals.Divider` (Phase 2 PR4).
+"""Tests for :func:`ink.externals.Divider` (Phase 2 PR4).
 
 ``Divider`` is a declarative factory that wraps a single-edge ``box`` —
 no hooks, no function component, no live render pipeline needed. Every
-assertion uses the synchronous :func:`pyink.render_to_string` test
+assertion uses the synchronous :func:`ink.render_to_string` test
 renderer (matching :mod:`tests.externals.test_link` rather than
 ``test_spinner``, which has to reach for ``render`` because
-:func:`pyink.hooks.use_interval` requires the active-instance
+:func:`ink.hooks.use_interval` requires the active-instance
 ContextVar).
 
 Coverage:
@@ -27,22 +27,22 @@ Coverage:
 * Invalid ``direction`` raises ``ValueError``.
 * Integration: several dividers stacked inside a column compose into a
   section-separated layout.
-* ``Divider`` is exported from ``pyink.externals`` but NOT from the
-  top-level ``pyink`` package (PRD Decision 5 — externals stay opt-in).
+* ``Divider`` is exported from ``ink.externals`` but NOT from the
+  top-level ``ink`` package (PRD Decision 5 — externals stay opt-in).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from pyink import Box, Text, render_to_string
-from pyink.core.element import Element
-from pyink.externals import Divider
-from pyink.render.ansi import BORDER_STYLES
+from ink import Box, Text, render_to_string
+from ink.core.element import Element
+from ink.externals import Divider
+from ink.render.ansi import BORDER_STYLES
 
 #: Expected characters per named border style, for the horizontal
 #: (``bottom`` edge) and vertical (``left`` edge) cases. Source of
-#: truth is :data:`pyink.render.ansi.BORDER_STYLES`; kept inline so a
+#: truth is :data:`ink.render.ansi.BORDER_STYLES`; kept inline so a
 #: failure points at the divider rather than a stale constant.
 _HORIZONTAL_CHARS = {
     name: chars["bottom"] for name, chars in BORDER_STYLES.items()
@@ -160,7 +160,7 @@ def test_horizontal_divider_each_named_border_style() -> None:
     """Every alias in ``BORDER_STYLES`` paints its ``bottom`` character.
 
     Parametrised via a loop so adding a new alias to
-    :data:`pyink.render.ansi.BORDER_STYLES` automatically extends
+    :data:`ink.render.ansi.BORDER_STYLES` automatically extends
     coverage here.
     """
     for name, char in _HORIZONTAL_CHARS.items():
@@ -525,7 +525,7 @@ def test_multiple_dividers_in_column() -> None:
 
 def test_divider_as_child_of_create_element_box() -> None:
     """Divider works as a child of a box built via ``create_element``."""
-    from pyink import create_element
+    from ink import create_element
 
     tree: Any = create_element(
         "box",
@@ -560,13 +560,13 @@ def test_divider_inside_a_row_parent() -> None:
 
 
 def test_externals_init_exports_divider() -> None:
-    from pyink.externals import Divider as InitDivider
+    from ink.externals import Divider as InitDivider
 
     assert InitDivider is Divider
 
 
-def test_divider_not_in_pyink_top_level() -> None:
+def test_divider_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in; top-level import must fail."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "Divider"), "Divider must NOT be top-level"
+    assert not hasattr(ink, "Divider"), "Divider must NOT be top-level"

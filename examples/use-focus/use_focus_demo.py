@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, signal, use_app, use_input
-from pyink.core.element import Element
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, signal, use_app, use_input
+from ink.core.element import Element
+from ink.render.keys import Key
 
 
 def FocusDemo() -> Element:

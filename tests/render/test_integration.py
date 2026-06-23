@@ -15,8 +15,8 @@ import io
 import threading
 import time
 
-from pyink import Box, Text, render
-from pyink.core.signal import signal
+from ink import Box, Text, render
+from ink.core.signal import signal
 
 
 def test_counter_renders_multiple_frames_over_time() -> None:

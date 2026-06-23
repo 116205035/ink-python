@@ -32,11 +32,11 @@ import sys
 import threading
 import time
 
-from pyink import Box, Text, create_element, render, signal, use_app, use_input
-from pyink.core.element import Element
-from pyink.core.signal import Signal
-from pyink.externals import ProgressBar
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, signal, use_app, use_input
+from ink.core.element import Element
+from ink.core.signal import Signal
+from ink.externals import ProgressBar
+from ink.render.keys import Key
 
 #: Loop period for each bar — smaller means a faster fill.
 PERIODS: tuple[float, ...] = (3.0, 5.0, 2.0)

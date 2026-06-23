@@ -25,10 +25,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import Divider
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import Divider
+from ink.render.keys import Key
 
 #: Border styles worth eyeballing side by side. Mirrors the borders
 #: example's selection so the two demos read consistently.

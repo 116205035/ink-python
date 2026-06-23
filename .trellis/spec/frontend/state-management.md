@@ -8,7 +8,7 @@
 
 PyInk uses a **signals-based reactive model** (similar to SolidJS / Vue 3 / Preact Signals), not React hooks. Components are pure functions that run **once on mount**; state lives in signal objects, and any code that reads a signal automatically subscribes to it.
 
-Five primitives in `pyink.core.signal`:
+Five primitives in `ink.core.signal`:
 
 | Primitive | Purpose | Triggers re-render? |
 |-----------|---------|---------------------|
@@ -21,7 +21,7 @@ Five primitives in `pyink.core.signal`:
 API style: **`.value` property only** for read/write. No `()` call style.
 
 ```python
-from pyink import signal, computed, effect, ref, batch
+from ink import signal, computed, effect, ref, batch
 
 count = signal(0)
 double = computed(lambda: count.value * 2)
@@ -110,8 +110,8 @@ from jarvis.state import messages
 For state that should be **scoped to a subtree** (not global), use the Context system. Provider injects a value; descendants read it via `use_context`. Like React Context / Vue provide-inject / SolidJS context.
 
 ```python
-from pyink.core.context import create_context, Provider
-from pyink.hooks.context import use_context
+from ink.core.context import create_context, Provider
+from ink.hooks.context import use_context
 
 # Module-level constant
 ThemeContext = create_context("light")
@@ -167,7 +167,7 @@ Don't try to swap Provider values at runtime — mutate internal signals instead
 
 ### Built-in Contexts
 
-- `_FOCUS_MANAGER_CONTEXT` (in `pyink.hooks.focus`): used by `use_focus` to find the nearest `FocusManager`. Default is `NullFocusManager` (no-op).
+- `_FOCUS_MANAGER_CONTEXT` (in `ink.hooks.focus`): used by `use_focus` to find the nearest `FocusManager`. Default is `NullFocusManager` (no-op).
 
 ## Refs (non-reactive holders)
 
@@ -372,6 +372,6 @@ Effects created in loops must be tracked and disposed. Prefer `computed` for der
 
 ## Reference
 
-- Source: `src/pyink/core/signal.py`
+- Source: `src/ink/core/signal.py`
 - Tests: `tests/core/test_signal.py` (35 cases)
 - Design decisions: `.trellis/tasks/06-19-pyink-mvp/prd.md` Decisions 1, 6, 10, 11

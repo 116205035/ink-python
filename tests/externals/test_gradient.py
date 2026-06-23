@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.externals.Gradient` (Phase 6 PR2).
+"""Tests for :func:`ink.externals.Gradient` (Phase 6 PR2).
 
 ``Gradient`` is a function component that wraps an inner layout pass
 (just like :func:`Transform` / :func:`Link`), so all assertions use
@@ -22,8 +22,8 @@ Coverage:
 * ``colors`` validation — non-list / empty list raises ``TypeError``.
 * Integration: ``Gradient`` wrapping :func:`BigText` paints the
   banner's characters with gradient hues.
-* ``Gradient`` is exported from ``pyink.externals`` but NOT from the
-  top-level ``pyink`` package (PRD Decision 5 — externals stay opt-in).
+* ``Gradient`` is exported from ``ink.externals`` but NOT from the
+  top-level ``ink`` package (PRD Decision 5 — externals stay opt-in).
 """
 
 from __future__ import annotations
@@ -31,9 +31,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from pyink import Box, Text, render_to_string
-from pyink.core.element import Element
-from pyink.externals import BigText, Gradient
+from ink import Box, Text, render_to_string
+from ink.core.element import Element
+from ink.externals import BigText, Gradient
 
 #: Regex that matches a single truecolor SGR run ``\\x1b[38;2;R;G;Bm``.
 #: Used to count the per-character SGR runs the gradient emits.
@@ -377,13 +377,13 @@ def test_gradient_wrapping_big_text() -> None:
 
 
 def test_externals_init_exports_gradient() -> None:
-    from pyink.externals import Gradient as InitGradient
+    from ink.externals import Gradient as InitGradient
 
     assert InitGradient is Gradient
 
 
-def test_gradient_not_in_pyink_top_level() -> None:
+def test_gradient_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in; top-level import must fail."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "Gradient"), "Gradient must NOT be top-level"
+    assert not hasattr(ink, "Gradient"), "Gradient must NOT be top-level"

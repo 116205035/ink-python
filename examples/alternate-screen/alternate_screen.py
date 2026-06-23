@@ -4,7 +4,7 @@ Reference: ink's ``render(tree, { stdout, stdin })`` alternate-screen
 mode and the ``alternate-screen`` npm package.
 
 PyInk ships the same capability as a keyword argument to
-:func:`pyink.render.render`: pass ``alternate_screen=True`` and the
+:func:`ink.render.render`: pass ``alternate_screen=True`` and the
 pipeline emits ``\\x1b[?1049h`` on mount and ``\\x1b[?1049l`` on
 unmount. The atexit + SIGINT hooks registered by the Instance guarantee
 the main screen buffer is restored even when the process crashes —
@@ -31,9 +31,9 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, signal, use_app, use_input
-from pyink.core.element import Element
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, signal, use_app, use_input
+from ink.core.element import Element
+from ink.render.keys import Key
 
 
 def AlternateScreen() -> Element:

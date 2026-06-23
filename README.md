@@ -62,24 +62,24 @@ The Phase 3 content-rendering externals pull in heavier third-party
 libraries. Install only what you need:
 
 ```bash
-pip install pyink                     # core only (no extra deps)
-pip install pyink[highlight]          # + HighlightedCode / StructuredDiff highlighting (Pygments)
-pip install pyink[markdown]           # + Markdown rendering (markdown-it-py)
-pip install pyink[big-text]           # + BigText ASCII art banners (pyfiglet)
-pip install pyink[all]                # everything — full content surface
+pip install ink-python                     # core only (no extra deps)
+pip install ink-python[highlight]          # + HighlightedCode / StructuredDiff highlighting (Pygments)
+pip install ink-python[markdown]           # + Markdown rendering (markdown-it-py)
+pip install ink-python[big-text]           # + BigText ASCII art banners (pyfiglet)
+pip install ink-python[all]                # everything — full content surface
 ```
 
-Externals are imported explicitly (`from pyink.externals import
-Markdown`) — they are **not** re-exported from the top-level `pyink`
+Externals are imported explicitly (`from ink.externals import
+Markdown`) — they are **not** re-exported from the top-level `ink`
 namespace, so the optional dependencies stay optional. Each external
 that needs its extra raises an `ImportError` with a `pip install
-pyink[...]` hint the first time it is called without the extra
+ink-python[...]` hint the first time it is called without the extra
 installed.
 
 ## Minimal example
 
 ```python
-from pyink import Box, Text, render, signal
+from ink import Box, Text, render, signal
 
 def Counter():
     count = signal(0)
@@ -89,7 +89,7 @@ def Counter():
             count.value += 1
 
     # ``use_input`` is imported alongside the rest of the API
-    from pyink import use_input
+    from ink import use_input
     use_input(on_key)
 
     return Box(
@@ -105,7 +105,7 @@ More examples live under [`examples/`](./examples) — see below.
 
 ## API surface
 
-### Signals (`pyink.core.signal`)
+### Signals (`ink.core.signal`)
 
 | Name | Description |
 | --- | --- |
@@ -125,7 +125,7 @@ More examples live under [`examples/`](./examples) — see below.
 `fn` may return a cleanup callable that runs before the next re-run and on
 dispose. `effect(...)` returns a dispose callable.
 
-### Components (`pyink.components`)
+### Components (`ink.components`)
 
 The six built-in host components map 1:1 to ink's primitives:
 
@@ -138,10 +138,10 @@ The six built-in host components map 1:1 to ink's primitives:
 | `Static(items, render_item)` | Permanently render a list of items above the live frame. `items` may be a plain list, a `Signal[list]`, or a `Callable[[], list]`. |
 | `Transform(*children, transform=fn)` | Rewrite the rendered string of children via `transform(line, idx) -> str`. |
 
-### Hooks (`pyink.hooks`)
+### Hooks (`ink.hooks`)
 
 All hooks must be called from inside a function-component body mounted
-via `pyink.render.render`:
+via `ink.render.render`:
 
 | Name | Description |
 | --- | --- |
@@ -154,7 +154,7 @@ via `pyink.render.render`:
 | `use_focus_manager() -> FocusManagerHandle` | Create a focus manager for the current subtree (Phase 2). The handle exposes `focus_next` / `focus_previous` / `focus(id)` / `enable` / `disable` / `active_id` and a `wrap(*children)` that builds the Provider injecting the manager. |
 | `use_box_metrics(ref) -> Computed[BoxMetrics]` | Subscribe to measurements of the element `ref` points at (Phase 2). Refreshes after every layout pass; `BoxMetrics.has_measured` is `False` until the first layout. |
 
-### Context (`pyink.core.context`)
+### Context (`ink.core.context`)
 
 Phase 2 ships a Context system backed by a `ContextVar` stack. Provider
 mount pushes `(id, value)`; unmount pops it. `use_context(ctx)` reads
@@ -166,10 +166,10 @@ the nearest matching entry, falling back to the context's default.
 | `Context[T]` | The context object — carry it around (e.g. module-level) and pass to `Provider` / `use_context`. |
 | `Provider(ctx, value, *children)` | Host element that pushes `value` onto the context's stack for its subtree. |
 
-### Externals (`pyink.externals`)
+### Externals (`ink.externals`)
 
 Opt-in components — import them explicitly
-(`from pyink.externals import Spinner, Link, Divider`). Phase 2 +
+(`from ink.externals import Spinner, Link, Divider`). Phase 2 +
 Phase 3 + Phase 4:
 
 | Name | Description |
@@ -178,8 +178,8 @@ Phase 3 + Phase 4:
 | `Link(*children, url, **text_props)` | Wrap children in an OSC 8 terminal hyperlink. Style props (`color`, `bold`, `underline`, …) are forwarded to the emitted `Text` leaf. |
 | `Divider(*, label=None, direction="horizontal", border_style="single", color=None, width=None, height=None, padding=0)` | Single-line section separator, optionally carrying a centred label. Vertical mode (`direction="vertical"`) renders a column inside a row container. |
 | `StreamingText(buffer, *, cursor=None, cursor_color=None, reveal_speed=0, color=None, **text_props)` | Stream-in text display. `buffer` is a `Signal[str]` / `Callable[[], str]` / `str`. `reveal_speed>0` enables a typing animation; `cursor` adds a trailing glyph. Phase 3. |
-| `HighlightedCode(code, *, language="text", theme=None, line_numbers=False, **text_props)` | Pygments-driven syntax highlighting. Lazy-imports `pygments`; raises `ImportError("pip install pyink[highlight]")` on first call without the extra. Phase 3. |
-| `Markdown(source, *, theme=None, **box_props)` | Render Markdown (CommonMark + tables) via `markdown-it-py`. `source` is a `str` / `Signal[str]` / `Callable[[], str]`. Fenced code blocks render via `HighlightedCode` when Pygments is installed, plain text otherwise. Raises `ImportError("pip install pyink[markdown]")` without the extra. Phase 3. |
+| `HighlightedCode(code, *, language="text", theme=None, line_numbers=False, **text_props)` | Pygments-driven syntax highlighting. Lazy-imports `pygments`; raises `ImportError("pip install ink-python[highlight]")` on first call without the extra. Phase 3. |
+| `Markdown(source, *, theme=None, **box_props)` | Render Markdown (CommonMark + tables) via `markdown-it-py`. `source` is a `str` / `Signal[str]` / `Callable[[], str]`. Fenced code blocks render via `HighlightedCode` when Pygments is installed, plain text otherwise. Raises `ImportError("pip install ink-python[markdown]")` without the extra. Phase 3. |
 | `StructuredDiff(before, after, *, language="text", context_lines=3, show_header=True, **box_props)` | File-edit diff via `difflib.unified_diff`. `+` green / `-` red / `@@` magenta. Optional Pygments highlighting of `+`/`-` bodies when `language != "text"` and Pygments is installed. Phase 3. |
 | `TextInput(*, initial_value="", placeholder=None, on_change=None, on_submit=None, on_cursor_change=None, multiline=False, mask=None, max_length=None, color=None, cursor_color=None, cursor_style="block", is_active=True, **box_props)` | Single-line or multi-line text input. Owns three writable signals (`value` / `cursor` / `selection`); Emacs-style editing (Ctrl+A/E/K/U/W), Shift-arrow selection, bracketed-paste, password `mask`, `max_length` truncation. `on_cursor_change(offset)` fires on every cursor move (arrows / typing / edits / programmatic). `cursor_style` defaults to `"block"` (Claude Code feel); `"bar"` / `"underline"` also supported. Phase 4. |
 | `SelectInput(items, *, initial_index=0, on_select=None, on_change=None, multi_select=False, indicator="❯", selected_indicator="✓", unselected_indicator=" ", color=None, selected_color="green", is_active=True, **box_props)` | Keyboard-navigable option list. `ArrowUp`/`Down` or `j`/`k` move the focus; `1`..`9` jump to an index; `Enter` confirms (single-select fires `on_select(value)`, multi-select fires `on_select(list[value])`); `Space` toggles (multi-select only). Phase 4. |
@@ -188,7 +188,7 @@ Phase 3 + Phase 4:
 | `Gradient(*children, colors, **text_props)` | Multi-colour truecolor text. Each character of the rendered children is painted with a colour interpolated linearly in RGB space between adjacent `colors` endpoints (named / hex / `rgb(...)` specs; `ansi256(N)` is silently dropped). Style props forwarded to the emitted `Text` leaf. Phase 6. |
 | `ProgressBar(*, value, width=30, character="█", remaining_character="░", color=None, show_percentage=True, **text_props)` | Horizontal progress bar. `value` is `float` / `Signal[float]` / `Callable[[], float]` clamped to `[0.0, 1.0]`; the bar always occupies exactly `width` cells, with `show_percentage=True` appending a fixed-width ` NN%` suffix. Phase 6. |
 | `Table(*, data, columns=None, padding=1, **_props)` | Column-aligned data table. `data` accepts `list[list[str]]` (positional rows; `columns` defaults to `Column 1` / `Column 2` / ...) or `list[dict[str, str]]` (keyed rows; `columns` defaults to the union of keys). Header row is bold. Phase 6. |
-| `BigText(text, *, font="standard", colors=None, align="left", width=None, color=None, **box_props)` | ASCII art banner text via `pyfiglet` (300+ FIGlet fonts). `colors` cycles per-row (e.g. `["red", "yellow"]` paints alternating rows); `align` is pyfiglet's justify; `width` is the render column budget. Lazy-imports `pyfiglet`; raises `ImportError("pip install pyink[big-text]")` without the extra. Phase 6. |
+| `BigText(text, *, font="standard", colors=None, align="left", width=None, color=None, **box_props)` | ASCII art banner text via `pyfiglet` (300+ FIGlet fonts). `colors` cycles per-row (e.g. `["red", "yellow"]` paints alternating rows); `align` is pyfiglet's justify; `width` is the render column budget. Lazy-imports `pyfiglet`; raises `ImportError("pip install ink-python[big-text]")` without the extra. Phase 6. |
 
 ### Imperative API (`measure_element`)
 
@@ -200,7 +200,7 @@ Pair `measure_element` with the `ref` prop on `Box` (any
 `Ref[LayoutNode | None]` passed as `ref=` is back-filled by the layout
 pass) and with `use_box_metrics` for reactive updates.
 
-### Render (`pyink.render`)
+### Render (`ink.render`)
 
 | Name | Description |
 | --- | --- |
@@ -255,10 +255,10 @@ modelled after ink's own examples:
 | [`use-focus-real`](./examples/use-focus-real/use_focus_real_demo.py) | The real `use_focus` + `use_focus_manager` hooks — Tab / Shift+Tab cycle + digit-key jumps between three focusable boxes. | `python examples/use-focus-real/use_focus_real_demo.py` |
 | [`measure-element`](./examples/measure-element/measure_demo.py) | `measure_element` API + `use_box_metrics` hook — live `Width × Height` and width-driven content switch on terminal resize. | `python examples/measure-element/measure_demo.py` |
 | [`streaming-text`](./examples/streaming-text/streaming_text_demo.py) | `StreamingText` external — a background-thread token stream with **instant** vs **smooth** (`reveal_speed=20`) side-by-side panels. | `python examples/streaming-text/streaming_text_demo.py` |
-| [`highlighted-code`](./examples/highlighted-code/highlighted_code_demo.py) | `HighlightedCode` external — Python / JavaScript / SQL / JSON blocks with `line_numbers` and a custom-token-colour `theme` override. Requires `pip install pyink[highlight]`. | `python examples/highlighted-code/highlighted_code_demo.py` |
-| [`markdown`](./examples/markdown/markdown_demo.py) | `Markdown` external — every supported block (headings, lists, quote, code block, table, horizontal rule). Requires `pip install pyink[markdown]`. | `python examples/markdown/markdown_demo.py` |
+| [`highlighted-code`](./examples/highlighted-code/highlighted_code_demo.py) | `HighlightedCode` external — Python / JavaScript / SQL / JSON blocks with `line_numbers` and a custom-token-colour `theme` override. Requires `pip install ink-python[highlight]`. | `python examples/highlighted-code/highlighted_code_demo.py` |
+| [`markdown`](./examples/markdown/markdown_demo.py) | `Markdown` external — every supported block (headings, lists, quote, code block, table, horizontal rule). Requires `pip install ink-python[markdown]`. | `python examples/markdown/markdown_demo.py` |
 | [`diff`](./examples/diff/diff_demo.py) | `StructuredDiff` external — three variants of a Python-module diff: default context, zero-context, and plain-text fallback. | `python examples/diff/diff_demo.py` |
-| [`markdown-streaming`](./examples/markdown-streaming/markdown_streaming_demo.py) | Advanced integration: live AI token stream + `Markdown` re-parsing on every character. Requires `pip install pyink[all]`. | `python examples/markdown-streaming/markdown_streaming_demo.py` |
+| [`markdown-streaming`](./examples/markdown-streaming/markdown_streaming_demo.py) | Advanced integration: live AI token stream + `Markdown` re-parsing on every character. Requires `pip install ink-python[all]`. | `python examples/markdown-streaming/markdown_streaming_demo.py` |
 | [`text-input`](./examples/text-input/text_input_demo.py) | `TextInput` external — single-line + multi-line + password (`mask="*"`) + placeholder inputs, mounted inside a `use_focus_manager` so Tab cycles focus. | `python examples/text-input/text_input_demo.py` |
 | [`text-input-selection`](./examples/text-input-selection/selection_demo.py) | `TextInput` selection — Shift+arrows / Ctrl+Shift+arrows extend a selection, Backspace / typing replace it, Ctrl+W kills a word. | `python examples/text-input-selection/selection_demo.py` |
 | [`select-input-real`](./examples/select-input-real/select_input_demo.py) | The real `SelectInput` external — `ArrowUp`/`Down` + `j`/`k` + digit-key jumps; Enter confirms. Contrasts with the hand-rolled `examples/select-input`. | `python examples/select-input-real/select_input_demo.py` |
@@ -269,7 +269,7 @@ modelled after ink's own examples:
 | [`gradient`](./examples/gradient/gradient_demo.py) | `Gradient` external — `PyInk` headline painted red → yellow → green, plus named / hex / bright-variant multi-colour ramps. | `python examples/gradient/gradient_demo.py` |
 | [`progress-bar`](./examples/progress-bar/progress_bar_demo.py) | `ProgressBar` external — three looping bars at different speeds (slow / slower / fast ASCII-style `=`/`-`), each driven by its own background thread. | `python examples/progress-bar/progress_bar_demo.py` |
 | [`table`](./examples/table/table_demo.py) | `Table` external — positional (`list[list[str]]`) and keyed (`list[dict[str, str]]`) modes side by side, with mixed-key row coverage. | `python examples/table/table_demo.py` |
-| [`big-text`](./examples/big-text/big_text_demo.py) | `BigText` external — `PyInk` in the `block` font with a red/yellow colour cycle, plus `standard` / `shadow` / `digital` / `banner` font showcase and a centred banner. Requires `pip install pyink[big-text]`. | `python examples/big-text/big_text_demo.py` |
+| [`big-text`](./examples/big-text/big_text_demo.py) | `BigText` external — `PyInk` in the `block` font with a red/yellow colour cycle, plus `standard` / `shadow` / `digital` / `banner` font showcase and a centred banner. Requires `pip install ink-python[big-text]`. | `python examples/big-text/big_text_demo.py` |
 
 Most examples wait for `Ctrl+C` (the default `exit_on_ctrl_c=True`).
 Press `Ctrl+C` to quit any of them. The Phase 2 / Phase 3 / Phase 4
@@ -279,8 +279,8 @@ examples additionally accept `Esc`.
 
 ```bash
 python -m pytest tests -v          # ~1100 tests (unit + integration)
-python -m mypy src/pyink tests examples
-python -m ruff check src/pyink tests examples
+python -m mypy src/ink tests examples
+python -m ruff check src/ink tests examples
 ```
 
 ## License

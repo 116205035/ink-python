@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from pyink.core.element import create_element
-from pyink.core.scheduler import Scheduler
-from pyink.core.signal import signal
-from pyink.render import render_to_string
+from ink.core.element import create_element
+from ink.core.scheduler import Scheduler
+from ink.core.signal import signal
+from ink.render import render_to_string
 
 # ---------------------------------------------------------------------------
 # render_to_string
@@ -102,7 +102,7 @@ def test_render_unmounts_tree_after_snapshot() -> None:
 
     def Comp() -> object:
         # An effect with a cleanup; render_to_string must unmount it.
-        from pyink.core.signal import effect
+        from ink.core.signal import effect
 
         def setup() -> Callable[[], None]:
             return lambda: cleanups.append("done")

@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.externals.StructuredDiff` (Phase 3 PR5).
+"""Tests for :func:`ink.externals.StructuredDiff` (Phase 3 PR5).
 
 Mixed renderer strategy (mirroring
 :mod:`tests.externals.test_streaming_text` and
@@ -8,7 +8,7 @@ Mixed renderer strategy (mirroring
   test renderer — ``StructuredDiff``'s fast path is a declarative
   ``box`` factory, no hooks involved.
 * Reactive-source cases (``Signal`` / ``Callable``) drive the live
-  :func:`pyink.render.render` pipeline so we can verify signal writes
+  :func:`ink.render.render` pipeline so we can verify signal writes
   actually trigger a re-render.
 
 Coverage (per PR5 scope):
@@ -29,8 +29,8 @@ Coverage (per PR5 scope):
   ``Text`` (verified by mocking ``__import__``).
 * Reactive sources (``Signal`` / ``Callable``) re-render on writes.
 * ``theme=`` override flows through to HighlightedCode.
-* ``StructuredDiff`` is exported from ``pyink.externals`` but NOT from
-  the top-level ``pyink`` package (PRD Decision 5).
+* ``StructuredDiff`` is exported from ``ink.externals`` but NOT from
+  the top-level ``ink`` package (PRD Decision 5).
 * Integration: ``StructuredDiff`` inside a parent ``Box`` composes
   cleanly with siblings.
 """
@@ -46,11 +46,11 @@ from typing import Any
 
 import pytest
 
-from pyink import Box, Text, render, render_to_string, signal
-from pyink.core.element import Element
-from pyink.externals import StructuredDiff
-from pyink.externals.diff import _DiffImpl, _resolve_source
-from pyink.render.instance import Instance
+from ink import Box, Text, render, render_to_string, signal
+from ink.core.element import Element
+from ink.externals import StructuredDiff
+from ink.externals.diff import _DiffImpl, _resolve_source
+from ink.render.instance import Instance
 
 ESC = "\x1b"
 
@@ -388,7 +388,7 @@ def test_custom_hunk_color_overrides_default() -> None:
 
 @pytest.mark.skipif(
     not _pygments_available(),
-    reason="pygments not installed (pip install pyink[highlight])",
+    reason="pygments not installed (pip install ink[highlight])",
 )
 def test_language_python_applies_pygments_colors_to_plus_lines() -> None:
     """``+`` bodies are highlighted: ``print`` is cyan (builtin)."""
@@ -403,7 +403,7 @@ def test_language_python_applies_pygments_colors_to_plus_lines() -> None:
 
 @pytest.mark.skipif(
     not _pygments_available(),
-    reason="pygments not installed (pip install pyink[highlight])",
+    reason="pygments not installed (pip install ink[highlight])",
 )
 def test_language_python_applies_pygments_colors_to_minus_lines() -> None:
     """``-`` bodies are highlighted too."""
@@ -464,7 +464,7 @@ def test_plus_prefix_keeps_add_color_when_highlighted(
 
 @pytest.mark.skipif(
     not _pygments_available(),
-    reason="pygments not installed (pip install pyink[highlight])",
+    reason="pygments not installed (pip install ink[highlight])",
 )
 def test_theme_override_flows_to_highlighted_code() -> None:
     """``theme=`` overrides Pygments token colours for diff bodies."""
@@ -617,15 +617,15 @@ def test_structured_diff_inside_box_with_border() -> None:
 
 
 def test_externals_init_exports_structured_diff() -> None:
-    from pyink.externals import StructuredDiff as InitStructuredDiff
+    from ink.externals import StructuredDiff as InitStructuredDiff
 
     assert InitStructuredDiff is StructuredDiff
 
 
-def test_structured_diff_not_in_pyink_top_level() -> None:
+def test_structured_diff_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in; top-level import must fail."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "StructuredDiff"), (
+    assert not hasattr(ink, "StructuredDiff"), (
         "StructuredDiff must NOT be top-level"
     )

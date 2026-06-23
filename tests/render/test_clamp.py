@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.render.render` terminal-size clamp.
+"""Tests for :func:`ink.render.render` terminal-size clamp.
 
 Bug context: when a caller hard-codes ``rows=30`` (or ``columns=…``)
 but the real terminal is shorter, the oversized frame overflows the
@@ -6,7 +6,7 @@ screen, the terminal scrolls, and the inline repaint's relative
 cursor-up math (which assumes every painted row is still on-screen)
 lands on the wrong rows — corrupting every subsequent frame.
 
-The fix lives in :func:`pyink.render.render`: the caller-supplied
+The fix lives in :func:`ink.render.render`: the caller-supplied
 viewport size is clamped to the real terminal size detected via
 :func:`shutil.get_terminal_size`. The clamp only fires when stdout is
 a real TTY — a non-TTY stream (CI, tests driving PyInk through
@@ -14,8 +14,8 @@ a real TTY — a non-TTY stream (CI, tests driving PyInk through
 viewport is trustworthy.
 
 Each test monkey-patches the size-detection seam
-(:func:`pyink.render.pipeline._detect_terminal_size`) and the TTY
-check (:func:`pyink.render.pipeline._stdout_is_tty`) so the clamp
+(:func:`ink.render.pipeline._detect_terminal_size`) and the TTY
+check (:func:`ink.render.pipeline._stdout_is_tty`) so the clamp
 logic is deterministic and does not depend on the CI runner's actual
 terminal dimensions.
 """
@@ -27,8 +27,8 @@ from collections.abc import Iterator
 
 import pytest
 
-from pyink import Text, render
-from pyink.render import pipeline
+from ink import Text, render
+from ink.render import pipeline
 
 
 @pytest.fixture

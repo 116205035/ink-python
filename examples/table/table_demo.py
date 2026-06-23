@@ -27,10 +27,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import Table
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import Table
+from ink.render.keys import Key
 
 #: Positional-mode rows. Five rows × four columns of demo data — the
 #: canonical "user roster" example. ``Table`` will derive the column

@@ -17,12 +17,12 @@ rendering of each can be eyeballed at once:
 
 Optional dependency: requires ``markdown-it-py``. Install with::
 
-    pip install pyink[markdown]
+    pip install ink[markdown]
 
 For syntax-highlighted code blocks inside Markdown, additionally
 install Pygments::
 
-    pip install pyink[highlight]
+    pip install ink[highlight]
 
 Run::
 
@@ -37,10 +37,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import Markdown
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import Markdown
+from ink.render.keys import Key
 
 #: The Markdown source rendered in the demo. Every supported block
 #: element appears at least once so the rendering of each can be
@@ -49,7 +49,7 @@ SOURCE: str = """\
 # Markdown demo
 
 A paragraph with **bold**, *italic*, `inline code` and a
-[link](https://github.com/anthropic/pyink).
+[link](https://github.com/anthropic/ink).
 
 ## Lists
 
@@ -118,7 +118,7 @@ def MarkdownDemo() -> Element:
         return Box(
             Text("Markdown demo", bold=True),
             Text(
-                "pip install pyink[markdown] (and pyink[highlight] for code) — "
+                "pip install ink[markdown] (and ink[highlight] for code) — "
                 "Esc / Ctrl+C to quit",
                 dimColor=True,
             ),

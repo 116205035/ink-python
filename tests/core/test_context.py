@@ -24,14 +24,14 @@ from collections.abc import Callable
 
 import pytest
 
-from pyink import Box, Provider, Text, create_context, create_element, render, signal
-from pyink.core.context import Context, get_context_stack
-from pyink.core.context import Provider as ProviderFn
-from pyink.core.context import create_context as create_context_fn
-from pyink.core.element import Element
-from pyink.core.signal import Signal
-from pyink.hooks.context import use_context
-from pyink.render.instance import Instance
+from ink import Box, Provider, Text, create_context, create_element, render, signal
+from ink.core.context import Context, get_context_stack
+from ink.core.context import Provider as ProviderFn
+from ink.core.context import create_context as create_context_fn
+from ink.core.element import Element
+from ink.core.signal import Signal
+from ink.hooks.context import use_context
+from ink.render.instance import Instance
 
 # ---------------------------------------------------------------------------
 # Test scaffolding
@@ -387,7 +387,7 @@ def test_changing_provider_value_does_not_remount_consumer() -> None:
 
 
 def test_provider_module_export_matches_core_helper() -> None:
-    """``pyink.Provider`` is the same callable as ``pyink.core.context.Provider``."""
+    """``ink.Provider`` is the same callable as ``ink.core.context.Provider``."""
     assert Provider is ProviderFn
 
 

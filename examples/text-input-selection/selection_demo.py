@@ -1,7 +1,7 @@
 """TextInput selection example — Shift+arrows + selection editing.
 
 Reference: ink's ``ink-text-input`` selection docs. PyInk's
-:func:`pyink.externals.TextInput` external (Phase 4 PR2) implements
+:func:`ink.externals.TextInput` external (Phase 4 PR2) implements
 selection via three writable signals (``value`` / ``cursor`` /
 ``selection``); this example shows the user-visible selection
 interactions against a single multi-line input:
@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import sys
 
-from pyink import (
+from ink import (
     Box,
     Text,
     create_element,
@@ -46,10 +46,10 @@ from pyink import (
     use_app,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.externals import TextInput
-from pyink.externals.text_input import cursor_column, cursor_line
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.externals import TextInput
+from ink.externals.text_input import cursor_column, cursor_line
+from ink.render.keys import Key
 
 #: The initial buffer — a short multi-line passage the user can select
 #: across. Picked so both cross-line (Shift+Up / Down) and within-line

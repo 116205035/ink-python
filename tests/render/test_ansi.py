@@ -1,4 +1,4 @@
-"""Tests for :mod:`pyink.render.ansi` (PR4).
+"""Tests for :mod:`ink.render.ansi` (PR4).
 
 Verifies colour parsing, style application and border rendering
 byte-for-byte against the equivalent ``chalk`` output ink's test suite
@@ -7,7 +7,7 @@ expects.
 
 from __future__ import annotations
 
-from pyink.render.ansi import (
+from ink.render.ansi import (
     BORDER_STYLES,
     apply_style,
     parse_color,

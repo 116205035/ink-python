@@ -1,9 +1,9 @@
-"""Tests for :func:`pyink.externals.StreamingText` (Phase 3 PR1).
+"""Tests for :func:`ink.externals.StreamingText` (Phase 3 PR1).
 
 Like :mod:`tests.externals.test_spinner`, we exercise the live
-:func:`pyink.render.render` pipeline rather than
-:func:`pyink.render_to_string` because the ``reveal_speed > 0`` branch
-mounts :func:`pyink.hooks.use_interval`, whose guard requires the active
+:func:`ink.render.render` pipeline rather than
+:func:`ink.render_to_string` because the ``reveal_speed > 0`` branch
+mounts :func:`ink.hooks.use_interval`, whose guard requires the active
 ``_current_instance`` ContextVar that only ``render`` sets up.
 
 The ``reveal_speed == 0`` fast path is a plain ``Text`` with a callable
@@ -18,11 +18,11 @@ import io
 import time
 from collections.abc import Callable
 
-from pyink import Box, Text, render, signal
-from pyink.core.element import Element
-from pyink.externals import StreamingText
-from pyink.externals.streaming_text import _StreamingTextImpl
-from pyink.render.instance import Instance
+from ink import Box, Text, render, signal
+from ink.core.element import Element
+from ink.externals import StreamingText
+from ink.externals.streaming_text import _StreamingTextImpl
+from ink.render.instance import Instance
 
 ESC = "\x1b"
 
@@ -381,7 +381,7 @@ def test_reveal_speed_unmount_tears_down_worker() -> None:
     inst, _ = _mount(StreamingText("hello", reveal_speed=100))
     assert _wait_for(
         lambda: any(
-            t.name.startswith("pyink-interval-") and t.is_alive()
+            t.name.startswith("ink-interval-") and t.is_alive()
             for t in threading.enumerate()
         ),
         attempts=80,
@@ -389,7 +389,7 @@ def test_reveal_speed_unmount_tears_down_worker() -> None:
     inst.unmount()
     assert _wait_for(
         lambda: not any(
-            t.name.startswith("pyink-interval-") and t.is_alive()
+            t.name.startswith("ink-interval-") and t.is_alive()
             for t in threading.enumerate()
         ),
         attempts=120,
@@ -471,15 +471,15 @@ def test_streaming_text_empty_buffer_inside_box() -> None:
 
 
 def test_externals_init_exports_streaming_text() -> None:
-    from pyink.externals import StreamingText as InitStreamingText
+    from ink.externals import StreamingText as InitStreamingText
 
     assert InitStreamingText is StreamingText
 
 
-def test_streaming_text_not_in_pyink_top_level() -> None:
+def test_streaming_text_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in; top-level import must fail."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "StreamingText"), (
+    assert not hasattr(ink, "StreamingText"), (
         "StreamingText must NOT be top-level"
     )

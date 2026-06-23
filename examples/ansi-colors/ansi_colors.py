@@ -28,8 +28,8 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Spacer, Text, render
-from pyink.core.element import Element
+from ink import Box, Spacer, Text, render
+from ink.core.element import Element
 
 #: Foreground named colors, in the canonical chalk / CSS order.
 FG_NAMED: tuple[str, ...] = (

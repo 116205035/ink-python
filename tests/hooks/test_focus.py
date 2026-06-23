@@ -27,16 +27,16 @@ from typing import Any
 
 import pytest
 
-from pyink import Text, create_element, render
-from pyink.core.element import Element
-from pyink.hooks._focus_runtime import (
+from ink import Text, create_element, render
+from ink.core.element import Element
+from ink.hooks._focus_runtime import (
     FocusHandle,
     FocusManager,
     FocusManagerHandle,
     NullFocusManager,
 )
-from pyink.hooks.focus import use_focus, use_focus_manager
-from pyink.render.instance import Instance
+from ink.hooks.focus import use_focus, use_focus_manager
+from ink.render.instance import Instance
 
 # ---------------------------------------------------------------------------
 # Test scaffolding
@@ -121,7 +121,7 @@ def test_use_focus_without_manager_has_auto_id() -> None:
     _settle()
     handle: FocusHandle = captured["handle"]
     assert isinstance(handle.id, str)
-    assert handle.id.startswith("pyink-focus-")
+    assert handle.id.startswith("ink-focus-")
     inst.unmount()
 
 
@@ -753,7 +753,7 @@ def test_null_focus_manager_all_methods_are_noops() -> None:
 
 def test_null_focus_manager_default_is_shared() -> None:
     """The default context value is the same shared NullFocusManager instance."""
-    from pyink.hooks.focus import _FOCUS_MANAGER_CONTEXT
+    from ink.hooks.focus import _FOCUS_MANAGER_CONTEXT
 
     assert isinstance(_FOCUS_MANAGER_CONTEXT.default, NullFocusManager)
 
@@ -841,7 +841,7 @@ def test_focus_handle_blur_only_active_handle_clears_focus() -> None:
 
 def test_is_focused_signal_notifies_subscribers() -> None:
     """Reading ``is_focused.value`` inside an effect subscribes to changes."""
-    from pyink import effect
+    from ink import effect
 
     mgr = FocusManager()
     h1 = FocusHandle("a", mgr)

@@ -1,8 +1,8 @@
-"""Tests for :func:`pyink.externals.HighlightedCode` (Phase 3 PR2).
+"""Tests for :func:`ink.externals.HighlightedCode` (Phase 3 PR2).
 
 Like :mod:`tests.externals.test_divider`, we exercise the synchronous
-:func:`pyink.render_to_string` test renderer rather than the live
-:func:`pyink.render` pipeline — ``HighlightedCode`` is a declarative
+:func:`ink.render_to_string` test renderer rather than the live
+:func:`ink.render` pipeline — ``HighlightedCode`` is a declarative
 factory (no hooks, no function component) so the cheap path is
 sufficient.
 
@@ -20,7 +20,7 @@ Coverage (per PR2 scope):
 * ``line_numbers=True`` — right-aligned dim gutter, one per source
   line.
 * Missing ``pygments`` — friendly ``ImportError`` pointing at
-  ``pip install pyink[highlight]``.
+  ``pip install ink[highlight]``.
 * Token-hierarchy lookup — a token like
   ``Token.Literal.String.Double`` resolves to ``String.Double`` →
   ``String`` in that order.
@@ -29,8 +29,8 @@ Coverage (per PR2 scope):
 * Empty code renders nothing.
 * Integration: ``HighlightedCode`` inside a parent ``Box`` with a
   border composes cleanly.
-* ``HighlightedCode`` is exported from ``pyink.externals`` but NOT
-  from the top-level ``pyink`` package (PRD Decision 5).
+* ``HighlightedCode`` is exported from ``ink.externals`` but NOT
+  from the top-level ``ink`` package (PRD Decision 5).
 """
 
 from __future__ import annotations
@@ -41,9 +41,9 @@ from typing import Any
 
 import pytest
 
-from pyink import Box, Text, render_to_string
-from pyink.core.element import Element
-from pyink.externals import DEFAULT_THEME, HighlightedCode
+from ink import Box, Text, render_to_string
+from ink.core.element import Element
+from ink.externals import DEFAULT_THEME, HighlightedCode
 
 ESC = "\x1b"
 
@@ -68,7 +68,7 @@ def _pygments_available() -> bool:
 
 pytestmark = pytest.mark.skipif(
     not _pygments_available(),
-    reason="pygments not installed (pip install pyink[highlight])",
+    reason="pygments not installed (pip install ink[highlight])",
 )
 
 
@@ -353,7 +353,7 @@ def test_lookup_walks_to_most_specific() -> None:
     """``Token.Literal.String.Double`` resolves to ``String.Double`` first,
     then falls back to ``String`` when the more specific key is absent.
     """
-    from pyink.externals.highlighted_code import _lookup_color
+    from ink.externals.highlighted_code import _lookup_color
 
     theme: dict[str, str | None] = {
         "String": "green",
@@ -367,7 +367,7 @@ def test_lookup_walks_to_most_specific() -> None:
 
 def test_lookup_falls_back_to_parent() -> None:
     """When no specific key matches, the parent path is tried."""
-    from pyink.externals.highlighted_code import _lookup_color
+    from ink.externals.highlighted_code import _lookup_color
 
     theme: dict[str, str | None] = {"Keyword": "magenta"}
     assert _lookup_color("Token.Keyword.Declaration", theme) == "magenta"
@@ -375,21 +375,21 @@ def test_lookup_falls_back_to_parent() -> None:
 
 def test_lookup_returns_none_when_no_match() -> None:
     """No match anywhere → ``None`` (use terminal default)."""
-    from pyink.externals.highlighted_code import _lookup_color
+    from ink.externals.highlighted_code import _lookup_color
 
     assert _lookup_color("Token.Name.Other", {}) is None
 
 
 def test_lookup_strips_token_prefix() -> None:
     """The ``Token.`` prefix is stripped before lookup."""
-    from pyink.externals.highlighted_code import _lookup_color
+    from ink.externals.highlighted_code import _lookup_color
 
     assert _lookup_color("Token.Keyword", {"Keyword": "red"}) == "red"
 
 
 def test_lookup_string_alias_for_literal_string() -> None:
     """``"String"`` matches ``Token.Literal.String`` via the alias map."""
-    from pyink.externals.highlighted_code import _lookup_color
+    from ink.externals.highlighted_code import _lookup_color
 
     assert _lookup_color("Token.Literal.String.Double", {"String": "green"}) == "green"
 
@@ -508,7 +508,7 @@ def test_missing_pygments_raises_friendly_import_error(_restore_import: Any) -> 
     _install_pygments_import_blocker()
     with pytest.raises(ImportError) as exc_info:
         HighlightedCode("print(1)", language="python")
-    assert "pip install pyink[highlight]" in str(exc_info.value)
+    assert "pip install ink[highlight]" in str(exc_info.value)
 
 
 def test_missing_pygments_error_mentions_component_name(_restore_import: Any) -> None:
@@ -598,16 +598,16 @@ def test_nested_in_outer_padding() -> None:
 
 
 def test_externals_init_exports_highlighted_code() -> None:
-    from pyink.externals import HighlightedCode as InitHC
+    from ink.externals import HighlightedCode as InitHC
 
     assert InitHC is HighlightedCode
 
 
-def test_highlighted_code_not_in_pyink_top_level() -> None:
+def test_highlighted_code_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in; top-level import must fail."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "HighlightedCode"), (
+    assert not hasattr(ink, "HighlightedCode"), (
         "HighlightedCode must NOT be top-level"
     )
 
@@ -622,7 +622,7 @@ def test_tokenize_cache_returns_same_tokens_for_same_input() -> None:
 
     Regression for the Phase 3 "highlighted-code demo pins CPU" bug.
     """
-    from pyink.externals.highlighted_code import _token_cache, _tokenize
+    from ink.externals.highlighted_code import _token_cache, _tokenize
 
     if not _pygments_available():
         import pytest

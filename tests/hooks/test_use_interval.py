@@ -1,7 +1,7 @@
-"""Tests for :func:`pyink.hooks.use_interval` (Phase 2 PR1).
+"""Tests for :func:`ink.hooks.use_interval` (Phase 2 PR1).
 
 The hook must be called inside a function component mounted via
-:func:`pyink.render.render`. Synthetic time is not patched — we use
+:func:`ink.render.render`. Synthetic time is not patched — we use
 short intervals (a few ms) and bounded polling, matching the style of
 the existing ``test_use_input`` suite.
 """
@@ -16,9 +16,9 @@ from typing import cast
 
 import pytest
 
-from pyink import Text, create_element, effect, render, use_interval
-from pyink.core.element import Element
-from pyink.render.instance import Instance
+from ink import Text, create_element, effect, render, use_interval
+from ink.core.element import Element
+from ink.render.instance import Instance
 
 
 class _FakeTTY(io.StringIO):
@@ -175,14 +175,14 @@ def test_use_interval_unmount_auto_cleans_up() -> None:
     assert _wait_for(lambda: bool(fired))
     # Snapshot any active interval threads before unmount.
     pre = {
-        t.name for t in threading.enumerate() if t.name.startswith("pyink-interval-")
+        t.name for t in threading.enumerate() if t.name.startswith("ink-interval-")
     }
-    assert pre, "expected at least one pyink-interval-* thread while mounted"
+    assert pre, "expected at least one ink-interval-* thread while mounted"
     inst.unmount()
     # After unmount the worker should be gone within a bounded window.
     assert _wait_for(
         lambda: not any(
-            t.name.startswith("pyink-interval-") and t.is_alive()
+            t.name.startswith("ink-interval-") and t.is_alive()
             for t in threading.enumerate()
         ),
         attempts=80,
@@ -265,7 +265,7 @@ def test_use_interval_callback_exception_does_not_kill_loop() -> None:
 
 
 def test_use_interval_thread_is_daemon_and_named() -> None:
-    """The worker thread is a daemon named ``pyink-interval-N``."""
+    """The worker thread is a daemon named ``ink-interval-N``."""
     started = threading.Event()
 
     def Comp() -> Element:
@@ -275,8 +275,8 @@ def test_use_interval_thread_is_daemon_and_named() -> None:
     inst = _render_comp(Comp)
     assert _wait_for(started.is_set)
     names = {t.name for t in threading.enumerate()}
-    interval_threads = [t for t in threading.enumerate() if t.name.startswith("pyink-interval-")]
-    assert interval_threads, "no pyink-interval-* thread found"
+    interval_threads = [t for t in threading.enumerate() if t.name.startswith("ink-interval-")]
+    assert interval_threads, "no ink-interval-* thread found"
     assert all(t.daemon for t in interval_threads), "interval thread must be daemon"
     # Unique names: each interval gets its own sequence number.
     assert len(names & {t.name for t in interval_threads}) == len(interval_threads)

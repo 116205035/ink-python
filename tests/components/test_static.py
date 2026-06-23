@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.components.static.Static` (PR7).
+"""Tests for :func:`ink.components.static.Static` (PR7).
 
 Covers:
 
@@ -22,9 +22,9 @@ import io
 import time
 from typing import Any
 
-from pyink import Box, Static, Text, render
-from pyink.core.signal import signal
-from pyink.render.instance import Instance
+from ink import Box, Static, Text, render
+from ink.core.signal import signal
+from ink.render.instance import Instance
 
 
 def _render_silent(tree: Any, **kwargs: Any) -> tuple[Instance, io.StringIO]:
@@ -263,7 +263,7 @@ def test_static_outside_render_raises() -> None:
     """Mounting Static without an active Instance raises RuntimeError."""
     import pytest
 
-    from pyink.core.reconciler import Reconciler
+    from ink.core.reconciler import Reconciler
 
     el = Static(["x"], lambda item, idx: Text(item))
     reconciler = Reconciler()

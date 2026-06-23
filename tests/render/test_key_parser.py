@@ -1,4 +1,4 @@
-"""Tests for :mod:`pyink.render.key_parser` (PR6).
+"""Tests for :mod:`ink.render.key_parser` (PR6).
 
 Each test feeds bytes through :class:`KeyParser` and asserts the
 resulting :class:`Key`. The parser mirrors ink's ``input-parser.ts`` +
@@ -8,8 +8,8 @@ resulting :class:`Key`. The parser mirrors ink's ``input-parser.ts`` +
 
 from __future__ import annotations
 
-from pyink.render.key_parser import KeyParser, parse_key
-from pyink.render.keys import Key
+from ink.render.key_parser import KeyParser, parse_key
+from ink.render.keys import Key
 
 
 def _one(data: bytes | str) -> Key:

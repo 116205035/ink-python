@@ -12,7 +12,7 @@ Both mounts use ``cursor='▋'`` and ``cursor_color='green'`` so the
 leading cursor glyph is visible while the stream is in flight.
 
 No optional dependency is required — ``StreamingText`` ships in core
-``pyink.externals``.
+``ink.externals``.
 
 Run::
 
@@ -29,10 +29,10 @@ import sys
 import threading
 import time
 
-from pyink import Box, Text, create_element, render, signal, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import StreamingText
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, signal, use_app, use_input
+from ink.core.element import Element
+from ink.externals import StreamingText
+from ink.render.keys import Key
 
 #: The simulated AI reply. Picked to span multiple sentences so the
 #: difference between instant and smooth reveal is visible.

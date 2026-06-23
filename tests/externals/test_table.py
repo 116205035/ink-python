@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.externals.Table` (Phase 6 PR2).
+"""Tests for :func:`ink.externals.Table` (Phase 6 PR2).
 
 ``Table`` is a declarative factory that returns a ``box`` column — no
 hooks, no function component, no live render pipeline needed. Every
@@ -16,17 +16,17 @@ Coverage:
 * Header row is bold.
 * Empty ``data=[]`` with / without ``columns``.
 * ``padding`` validation.
-* ``Table`` is exported from ``pyink.externals`` but NOT from the
-  top-level ``pyink`` package.
+* ``Table`` is exported from ``ink.externals`` but NOT from the
+  top-level ``ink`` package.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from pyink import Box, render_to_string
-from pyink.core.element import Element
-from pyink.externals import Table
+from ink import Box, render_to_string
+from ink.core.element import Element
+from ink.externals import Table
 
 # ---------------------------------------------------------------------------
 # Element shape
@@ -401,13 +401,13 @@ def test_table_inside_column_with_sibling_text() -> None:
 
 
 def test_externals_init_exports_table() -> None:
-    from pyink.externals import Table as InitTable
+    from ink.externals import Table as InitTable
 
     assert InitTable is Table
 
 
-def test_table_not_in_pyink_top_level() -> None:
+def test_table_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "Table")
+    assert not hasattr(ink, "Table")

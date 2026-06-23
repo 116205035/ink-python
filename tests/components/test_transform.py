@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.components.transform.Transform` (PR7).
+"""Tests for :func:`ink.components.transform.Transform` (PR7).
 
 Covers:
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pyink import Box, Text, Transform, render_to_string
+from ink import Box, Text, Transform, render_to_string
 
 # ---------------------------------------------------------------------------
 # Basic
@@ -159,7 +159,7 @@ def test_transform_no_op_passthrough() -> None:
 
 
 def test_transform_returns_element() -> None:
-    from pyink.core.element import Element
+    from ink.core.element import Element
 
     el = Transform(Text("hi"), transform=lambda line, idx: line)
     assert isinstance(el, Element)

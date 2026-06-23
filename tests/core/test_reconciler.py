@@ -6,10 +6,10 @@ from collections.abc import Callable
 
 import pytest
 
-from pyink.core.component import ComponentInstance, HostInstance
-from pyink.core.element import Element, create_element
-from pyink.core.reconciler import Reconciler
-from pyink.core.signal import effect, signal
+from ink.core.component import ComponentInstance, HostInstance
+from ink.core.element import Element, create_element
+from ink.core.reconciler import Reconciler
+from ink.core.signal import effect, signal
 
 # ---------------------------------------------------------------------------
 # Element / create_element

@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.externals.ProgressBar` (Phase 6 PR2).
+"""Tests for :func:`ink.externals.ProgressBar` (Phase 6 PR2).
 
 ``ProgressBar`` is a function component wrapping a layout-time
 callable child — the same pattern :func:`Spinner` uses — so signal
@@ -21,17 +21,17 @@ Coverage:
 * Style props (``bold``) are forwarded.
 * Validation: bad ``value`` / ``width`` / ``character`` raises
   ``TypeError``.
-* ``ProgressBar`` is exported from ``pyink.externals`` but NOT from
-  the top-level ``pyink`` package.
+* ``ProgressBar`` is exported from ``ink.externals`` but NOT from
+  the top-level ``ink`` package.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from pyink import Box, render_to_string, signal
-from pyink.core.element import Element
-from pyink.externals import ProgressBar
+from ink import Box, render_to_string, signal
+from ink.core.element import Element
+from ink.externals import ProgressBar
 
 #: Default filled character (U+2588 FULL BLOCK).
 _FILL = "█"
@@ -382,13 +382,13 @@ def test_progress_bar_inside_column() -> None:
 
 
 def test_externals_init_exports_progress_bar() -> None:
-    from pyink.externals import ProgressBar as InitProgressBar
+    from ink.externals import ProgressBar as InitProgressBar
 
     assert InitProgressBar is ProgressBar
 
 
-def test_progress_bar_not_in_pyink_top_level() -> None:
+def test_progress_bar_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "ProgressBar")
+    assert not hasattr(ink, "ProgressBar")

@@ -29,13 +29,13 @@ from collections.abc import Callable, Iterator
 
 import pytest
 
-from pyink import Box, Text, create_element, render, use_input
-from pyink.core.element import Element
-from pyink.externals import TextInput
-from pyink.render import terminal as _term_mod
-from pyink.render.instance import Instance
-from pyink.render.keys import Key
-from pyink.render.terminal import Terminal
+from ink import Box, Text, create_element, render, use_input
+from ink.core.element import Element
+from ink.externals import TextInput
+from ink.render import terminal as _term_mod
+from ink.render.instance import Instance
+from ink.render.keys import Key
+from ink.render.terminal import Terminal
 
 
 class _FakeTTY(io.StringIO):
@@ -100,7 +100,7 @@ def _mount_with_input(
     """Render a host that wires ``on_key`` via use_input and feed ``chunks``.
 
     ``render`` auto-starts the Terminal input reader thread once mount
-    finishes (see :func:`pyink.render.pipeline.render`), so the chunks
+    finishes (see :func:`ink.render.pipeline.render`), so the chunks
     fed through the patched ``_read_stdin_chunk`` reach the handler
     without any extra plumbing.
     """

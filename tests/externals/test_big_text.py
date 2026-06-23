@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.externals.BigText` (Phase 6 PR2).
+"""Tests for :func:`ink.externals.BigText` (Phase 6 PR2).
 
 ``BigText`` delegates to :mod:`pyfiglet` for the glyph data — 300+
 fonts, multi-row output. The factory is declarative (no hooks, no
@@ -20,12 +20,12 @@ Coverage:
 * ``width`` — pyfiglet wraps long banners at the caller-supplied
   width.
 * Missing :mod:`pyfiglet` — friendly ``ImportError`` pointing at
-  ``pip install pyink[big-text]``.
+  ``pip install ink[big-text]``.
 * Empty string renders an empty column.
 * Multi-line text (containing ``\\n``) renders without crashing.
 * Lowercase input is not auto-uppercased (pyfiglet handles case).
-* ``BigText`` is exported from ``pyink.externals`` but NOT from the
-  top-level ``pyink`` package.
+* ``BigText`` is exported from ``ink.externals`` but NOT from the
+  top-level ``ink`` package.
 """
 
 from __future__ import annotations
@@ -36,9 +36,9 @@ from typing import Any
 
 import pytest
 
-from pyink import Box, Text, render_to_string
-from pyink.core.element import Element
-from pyink.externals import BigText
+from ink import Box, Text, render_to_string
+from ink.core.element import Element
+from ink.externals import BigText
 
 ESC = "\x1b"
 
@@ -59,7 +59,7 @@ def _pyfiglet_available() -> bool:
 
 pytestmark = pytest.mark.skipif(
     not _pyfiglet_available(),
-    reason="pyfiglet not installed (pip install pyink[big-text])",
+    reason="pyfiglet not installed (pip install ink[big-text])",
 )
 
 
@@ -411,7 +411,7 @@ def test_missing_pyfiglet_raises_friendly_import_error(_restore_import: Any) -> 
     _install_pyfiglet_import_blocker()
     with pytest.raises(ImportError) as exc_info:
         BigText("Hi")
-    assert "pip install pyink[big-text]" in str(exc_info.value)
+    assert "pip install ink[big-text]" in str(exc_info.value)
 
 
 def test_missing_pyfiglet_error_mentions_component_name(_restore_import: Any) -> None:
@@ -475,13 +475,13 @@ def test_big_text_with_border() -> None:
 
 
 def test_externals_init_exports_big_text() -> None:
-    from pyink.externals import BigText as InitBigText
+    from ink.externals import BigText as InitBigText
 
     assert InitBigText is BigText
 
 
-def test_big_text_not_in_pyink_top_level() -> None:
+def test_big_text_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "BigText")
+    assert not hasattr(ink, "BigText")

@@ -8,7 +8,7 @@ positions the overflow children outside the container's outer rect and
 the renderer used to paint them anyway — smearing the overflow into the
 parent's adjacent rows (the classic "row overlap" bug).
 
-PR3 adds a clip stack to :class:`pyink.layout.render_layout._Grid`:
+PR3 adds a clip stack to :class:`ink.layout.render_layout._Grid`:
 
 * :meth:`_Grid.clip` pushes an inclusive ``(x1, y1, x2, y2)`` rectangle
   (intersected with whatever clip the ancestor pushed).
@@ -25,10 +25,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from pyink.core.element import Element, create_element
-from pyink.layout.flex import LayoutNode
-from pyink.layout.render_layout import _Grid, _paint_node
-from pyink.render import render_to_string
+from ink.core.element import Element, create_element
+from ink.layout.flex import LayoutNode
+from ink.layout.render_layout import _Grid, _paint_node
+from ink.render import render_to_string
 
 
 def _text_leaf(

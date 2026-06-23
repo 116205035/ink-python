@@ -1,7 +1,7 @@
 """SelectInput multi-select example — Space toggles + Enter confirms.
 
 Reference: ink's third-party ``ink-multi-select`` component. PyInk's
-:func:`pyink.externals.SelectInput` supports ``multi_select=True``
+:func:`ink.externals.SelectInput` supports ``multi_select=True``
 (Phase 4 PR3) — ``Space`` toggles the focused item in / out of the
 selection set, ``Enter`` confirms with the whole list of selected
 values, and ``ArrowUp`` / ``ArrowDown`` / ``j`` / ``k`` / digit keys
@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import sys
 
-from pyink import (
+from ink import (
     Box,
     Text,
     create_element,
@@ -37,9 +37,9 @@ from pyink import (
     use_app,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.externals import SelectInput
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.externals import SelectInput
+from ink.render.keys import Key
 
 #: Ten checkbox-style options — picked so digit-key jumps (``1``..``9``)
 #: cover most of the list and Space-toggling produces visually

@@ -1,10 +1,10 @@
-"""Tests for :mod:`pyink.layout.measure` (PR3)."""
+"""Tests for :mod:`ink.layout.measure` (PR3)."""
 
 from __future__ import annotations
 
 import pytest
 
-from pyink.layout.measure import (
+from ink.layout.measure import (
     string_width,
     wrap_text,
 )

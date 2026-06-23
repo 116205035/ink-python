@@ -1,4 +1,4 @@
-"""Tests for :class:`pyink.render.instance.Instance` (PR5).
+"""Tests for :class:`ink.render.instance.Instance` (PR5).
 
 The Instance is the live handle returned by :func:`render`. We exercise
 the lifecycle methods (rerender / unmount / wait_until_exit / clear)
@@ -14,8 +14,8 @@ import threading
 import time
 from collections.abc import Callable
 
-from pyink import Box, Text, render
-from pyink.core.signal import signal
+from ink import Box, Text, render
+from ink.core.signal import signal
 
 
 def _make_instance(
@@ -414,7 +414,7 @@ def test_fps_throttle_does_not_spin_when_idle() -> None:
     asserting the count stays low (one iteration per wakeup, and no
     wakeups happen on a static frame).
     """
-    from pyink.render.instance import _FpsThrottle
+    from ink.render.instance import _FpsThrottle
 
     iterations = {"count": 0}
     stop_evt = threading.Event()
@@ -445,7 +445,7 @@ def test_fps_throttle_does_not_spin_when_idle() -> None:
     worker = threading.Thread(
         target=counting_loop,
         args=(throttle.min_interval, throttle._wakeup, throttle._pending),
-        name="pyink-fps-throttle-test",
+        name="ink-fps-throttle-test",
         daemon=True,
     )
     worker.start()
@@ -467,7 +467,7 @@ def test_fps_throttle_coalesces_burst_into_one_callback() -> None:
     Mirrors the throttle's documented contract — they all paint the same
     tree, so older schedules are obsolete by the time the loop runs.
     """
-    from pyink.render.instance import _FpsThrottle
+    from ink.render.instance import _FpsThrottle
 
     fired: list[str] = []
 

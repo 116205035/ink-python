@@ -1,20 +1,20 @@
 # PyInk API Reference
 
-This document lists every name exported from the `pyink` package and
-the `pyink.externals` subpackage. For the architectural *why* behind
+This document lists every name exported from the `ink` package and
+the `ink.externals` subpackage. For the architectural *why* behind
 each API, see [architecture.md](./architecture.md); for the trade-offs
 that shaped each signature, see [design-decisions.md](./design-decisions.md).
 
 ## Import paths
 
 ```python
-import pyink                        # core API
-from pyink import Box, Text, render, signal, use_input, ...
-from pyink.externals import Spinner, Markdown, TextInput, ...
+import ink                        # core API
+from ink import Box, Text, render, signal, use_input, ...
+from ink.externals import Spinner, Markdown, TextInput, ...
 ```
 
-Externals are **not** re-exported from the top-level `pyink` namespace
-(Decision 16). Import them explicitly from `pyink.externals`.
+Externals are **not** re-exported from the top-level `ink` namespace
+(Decision 16). Import them explicitly from `ink.externals`.
 
 ## Built-in Components
 
@@ -120,8 +120,8 @@ layout has already positioned children based on original widths.
 
 ## Externals
 
-Import via `from pyink.externals import ...`. Externals with optional
-dependencies raise `ImportError("pip install pyink[...]")` on first
+Import via `from ink.externals import ...`. Externals with optional
+dependencies raise `ImportError("pip install ink[...]")` on first
 call without the extra installed.
 
 ### `Spinner(*, type="dots", color=None, interval_ms=80)`
@@ -162,7 +162,7 @@ per second. `**text_props` forwarded to `Text`.
 ### `HighlightedCode(code, *, language="text", theme=None, line_numbers=False, **text_props)`
 
 Pygments-driven syntax highlighting. Requires `pip install
-pyink[highlight]`. `language` is a Pygments lexer name (`"text"`
+ink[highlight]`. `language` is a Pygments lexer name (`"text"`
 skips highlighting; `"auto"` defers to `guess_lexer`). `theme` is a
 `dict[str, colour_spec]` keyed on short token names
 (`"String"`, `"Number"`, ...). `line_numbers=True` prepends a dim
@@ -171,7 +171,7 @@ right-aligned gutter.
 ### `Markdown(source, *, theme=None, **box_props)`
 
 Render Markdown (CommonMark + tables) via `markdown-it-py`. Requires
-`pip install pyink[markdown]`. `source` is `str` / `Signal[str]` /
+`pip install ink[markdown]`. `source` is `str` / `Signal[str]` /
 `Callable[[], str]`. `theme` is a `dict[str, colour_spec]` for
 headings, inline code, etc. Fenced code blocks render via
 `HighlightedCode` when Pygments is installed, plain text otherwise.
@@ -324,7 +324,7 @@ updates.
 
 ## Signals
 
-From `pyink.core.signal`. All thread-safe (each `Signal` / `Computed`
+From `ink.core.signal`. All thread-safe (each `Signal` / `Computed`
 / `Effect` owns its own `RLock`).
 
 ### `signal(initial) -> Signal[T]`
@@ -377,7 +377,7 @@ Coalesce multiple signal writes into one notification.
 
 ## Context
 
-From `pyink.core.context`. Backs `use_context`, `use_focus`, and
+From `ink.core.context`. Backs `use_context`, `use_focus`, and
 `use_focus_manager`.
 
 ### `create_context(default) -> Context[T]`
@@ -396,7 +396,7 @@ Decision 9).
 
 ## Element / Component
 
-From `pyink.core.element` + `pyink.core.component`.
+From `ink.core.element` + `ink.core.component`.
 
 ### `create_element(type, *children, **props) -> Element`
 
@@ -412,7 +412,7 @@ directly — `create_element` and the component factories produce them.
 
 ## Layout
 
-From `pyink.layout`. Useful for advanced cases (custom hosts,
+From `ink.layout`. Useful for advanced cases (custom hosts,
 measurement-only runs).
 
 ### `build_flex_tree(instance) -> FlexNode | None`
@@ -450,7 +450,7 @@ after teardown.
 
 ## Render
 
-From `pyink.render`.
+From `ink.render`.
 
 ### `render(tree, *, stdout=None, stdin=None, columns=None, rows=None, alternate_screen=False, exit_on_ctrl_c=True, max_fps=30) -> Instance`
 

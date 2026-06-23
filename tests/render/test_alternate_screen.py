@@ -23,9 +23,9 @@ import io
 import time
 from typing import Any
 
-from pyink import Box, Static, Text, render
-from pyink.core.signal import signal
-from pyink.render.instance import Instance
+from ink import Box, Static, Text, render
+from ink.core.signal import signal
+from ink.render.instance import Instance
 
 
 def _render_silent(tree: Any, **kwargs: Any) -> tuple[Instance, io.StringIO]:

@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.externals.Link` (Phase 2 PR3).
+"""Tests for :func:`ink.externals.Link` (Phase 2 PR3).
 
 OSC 8 hyperlinks wrap the rendered text of ``Link``'s children in a
 terminal hyperlink sequence:
@@ -23,10 +23,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from pyink import Box, Text, create_element, render_to_string
-from pyink.core.element import Element
-from pyink.externals import Link
-from pyink.externals.link import _LinkImpl
+from ink import Box, Text, create_element, render_to_string
+from ink.core.element import Element
+from ink.externals import Link
+from ink.externals.link import _LinkImpl
 
 #: Expected OSC 8 open/close sequences. Kept as constants so a failure
 #: points at the wrapping logic, not at a typo in the test data.
@@ -276,7 +276,7 @@ def test_link_does_not_over_allocate_layout_width() -> None:
     """OSC bytes must measure as zero-width so layout doesn't pad.
 
     Regression for the cross-layer concern documented in
-    :mod:`pyink.externals.link`: prior to extending the measure layer's
+    :mod:`ink.externals.link`: prior to extending the measure layer's
     ANSI regex to cover OSC sequences, the OSC payload counted as visible
     width and the rendered output gained trailing padding. This test
     pins the fix.
@@ -298,13 +298,13 @@ def test_link_does_not_over_allocate_layout_width() -> None:
 
 
 def test_externals_init_exports_link() -> None:
-    from pyink.externals import Link as InitLink
+    from ink.externals import Link as InitLink
 
     assert InitLink is Link
 
 
-def test_link_not_in_pyink_top_level() -> None:
+def test_link_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in; top-level import must fail."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "Link"), "Link must NOT be top-level"
+    assert not hasattr(ink, "Link"), "Link must NOT be top-level"

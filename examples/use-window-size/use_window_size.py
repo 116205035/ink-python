@@ -2,7 +2,7 @@
 
 Reference: ink's ``useWindowSize`` hook and ``examples/terminal-resize``.
 
-``use_window_size()`` returns a :class:`pyink.WindowSize` snapshot
+``use_window_size()`` returns a :class:`ink.WindowSize` snapshot
 with the current ``columns`` and ``rows``. The Instance's existing
 resize subscription triggers a re-render on resize; on re-render the
 component body re-reads the live size, so reading the snapshot here
@@ -26,8 +26,8 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Spacer, Text, create_element, render, use_window_size
-from pyink.core.element import Element
+from ink import Box, Spacer, Text, create_element, render, use_window_size
+from ink.core.element import Element
 
 #: Below this width the layout collapses to a single column.
 SINGLE_COLUMN_THRESHOLD: int = 60

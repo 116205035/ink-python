@@ -1,8 +1,8 @@
-"""Tests for :func:`pyink.externals.Spinner` (Phase 2 PR2).
+"""Tests for :func:`ink.externals.Spinner` (Phase 2 PR2).
 
-All assertions use the live :func:`pyink.render.render` pipeline rather
-than :func:`pyink.render_to_string`. The reason: ``Spinner`` mounts
-:func:`pyink.hooks.use_interval`, whose guard requires the active
+All assertions use the live :func:`ink.render.render` pipeline rather
+than :func:`ink.render_to_string`. The reason: ``Spinner`` mounts
+:func:`ink.hooks.use_interval`, whose guard requires the active
 ``_current_instance`` ContextVar — which is only set by ``render``,
 not by the synchronous test renderer. This matches the existing
 ``tests/hooks/test_use_interval.py`` and
@@ -19,11 +19,11 @@ import io
 import time
 from collections.abc import Callable
 
-from pyink import Box, Text, create_element, render
-from pyink.core.element import Element
-from pyink.externals import SPINNERS, Spinner
-from pyink.externals.spinner import _SpinnerComponent
-from pyink.render.instance import Instance
+from ink import Box, Text, create_element, render
+from ink.core.element import Element
+from ink.externals import SPINNERS, Spinner
+from ink.externals.spinner import _SpinnerComponent
+from ink.render.instance import Instance
 
 ESC = "\x1b"
 
@@ -330,7 +330,7 @@ def test_spinner_unmount_tears_down_worker() -> None:
     inst, _ = _mount(App())
     assert _wait_for(
         lambda: any(
-            t.name.startswith("pyink-interval-") and t.is_alive()
+            t.name.startswith("ink-interval-") and t.is_alive()
             for t in threading.enumerate()
         ),
         attempts=80,
@@ -339,7 +339,7 @@ def test_spinner_unmount_tears_down_worker() -> None:
     # ``use_interval`` join has a 1 s ceiling; we wait up to 2 s to be safe.
     assert _wait_for(
         lambda: not any(
-            t.name.startswith("pyink-interval-") and t.is_alive()
+            t.name.startswith("ink-interval-") and t.is_alive()
             for t in threading.enumerate()
         ),
         attempts=120,
@@ -414,16 +414,16 @@ def test_spinner_as_child_of_create_element_box() -> None:
 
 
 def test_externals_init_exports_spinner_and_spinners() -> None:
-    from pyink.externals import SPINNERS as InitSPINNERS
-    from pyink.externals import Spinner as InitSpinner
+    from ink.externals import SPINNERS as InitSPINNERS
+    from ink.externals import Spinner as InitSpinner
 
     assert InitSpinner is Spinner
     assert InitSPINNERS is SPINNERS
 
 
-def test_spinner_not_in_pyink_top_level() -> None:
+def test_spinner_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in; top-level import must fail."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "Spinner"), "Spinner must NOT be top-level"
-    assert not hasattr(pyink, "SPINNERS"), "SPINNERS must NOT be top-level"
+    assert not hasattr(ink, "Spinner"), "Spinner must NOT be top-level"
+    assert not hasattr(ink, "SPINNERS"), "SPINNERS must NOT be top-level"

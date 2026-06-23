@@ -4,10 +4,10 @@ Reference: SolidJS / Vue 3 / Preact Signals' ``computed`` + ``batch``.
 
 PyInk ships two reactive primitives that this demo exercises together:
 
-* :func:`pyink.computed` — a lazily-evaluated derived value that
+* :func:`ink.computed` — a lazily-evaluated derived value that
   re-computes whenever one of its source signals changes. ``double``
   here is ``computed(lambda: count.value * 2)``.
-* :func:`pyink.batch` — coalesce multiple writes into a single
+* :func:`ink.batch` — coalesce multiple writes into a single
   notification flush. Writing 5 times inside a ``with batch:`` block
   notifies every subscriber **once**, not five times.
 
@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import sys
 
-from pyink import (
+from ink import (
     Box,
     Text,
     batch,
@@ -49,9 +49,9 @@ from pyink import (
     signal,
     use_input,
 )
-from pyink.core.element import Element
-from pyink.core.signal import Signal
-from pyink.render.keys import Key
+from ink.core.element import Element
+from ink.core.signal import Signal
+from ink.render.keys import Key
 
 #: How many writes a single ``+`` press performs inside one batch.
 BATCH_SIZE: int = 5

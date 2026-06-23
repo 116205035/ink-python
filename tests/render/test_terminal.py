@@ -1,4 +1,4 @@
-"""Tests for :mod:`pyink.render.terminal` (PR5).
+"""Tests for :mod:`ink.render.terminal` (PR5).
 
 The Terminal wraps stdout with size detection, resize-callback
 registration (Unix SIGWINCH vs Windows polling), and the alternate
@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import time
 
-from pyink.render.terminal import Terminal
+from ink.render.terminal import Terminal
 
 
 def test_columns_and_rows_fallback_when_not_a_tty() -> None:

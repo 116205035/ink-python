@@ -1,7 +1,7 @@
-"""Tests for :func:`pyink.externals.ConfirmInput` (Phase 4 PR4).
+"""Tests for :func:`ink.externals.ConfirmInput` (Phase 4 PR4).
 
-We exercise the component through the live :func:`pyink.render.render`
-pipeline because ``ConfirmInput`` mounts :func:`pyink.hooks.use_input`,
+We exercise the component through the live :func:`ink.render.render`
+pipeline because ``ConfirmInput`` mounts :func:`ink.hooks.use_input`,
 whose guard requires the active ``_current_instance`` ContextVar that
 only ``render`` sets up. The mount / feed / unmount helpers mirror
 :mod:`tests.externals.test_select_input` so the two suites share a
@@ -19,13 +19,13 @@ from typing import Any
 
 import pytest
 
-from pyink import render
-from pyink.core.element import Element
-from pyink.externals import ConfirmInput
-from pyink.externals.confirm_input import _ConfirmInputImpl, _derive_label
-from pyink.render import terminal as _term_mod
-from pyink.render.instance import Instance
-from pyink.render.terminal import Terminal
+from ink import render
+from ink.core.element import Element
+from ink.externals import ConfirmInput
+from ink.externals.confirm_input import _ConfirmInputImpl, _derive_label
+from ink.render import terminal as _term_mod
+from ink.render.instance import Instance
+from ink.render.terminal import Terminal
 
 #: Regex that matches any CSI / OSC escape sequence (used to strip ANSI
 #: when asserting on visible buffer content).
@@ -338,16 +338,16 @@ def test_derive_label_empty_returns_empty() -> None:
 
 
 def test_externals_init_exports_confirm_input() -> None:
-    from pyink.externals import ConfirmInput as InitConfirmInput
+    from ink.externals import ConfirmInput as InitConfirmInput
 
     assert InitConfirmInput is ConfirmInput
 
 
-def test_confirm_input_not_in_pyink_top_level() -> None:
+def test_confirm_input_not_in_ink_top_level() -> None:
     """PRD Decision 5 — externals stay opt-in."""
-    import pyink
+    import ink
 
-    assert not hasattr(pyink, "ConfirmInput"), (
+    assert not hasattr(ink, "ConfirmInput"), (
         "ConfirmInput must NOT be top-level"
     )
 

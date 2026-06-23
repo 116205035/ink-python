@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.render.render` and the live render pipeline (PR5).
+"""Tests for :func:`ink.render.render` and the live render pipeline (PR5).
 
 These cover the public entry point and its integration with the
 reconciler, scheduler, terminal abstraction, and the reactive render
@@ -11,8 +11,8 @@ import io
 import threading
 import time
 
-from pyink import Box, Newline, Text, render
-from pyink.core.signal import signal
+from ink import Box, Newline, Text, render
+from ink.core.signal import signal
 
 
 def _render_silent(tree: object, **kwargs: object) -> tuple[object, io.StringIO]:

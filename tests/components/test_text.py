@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.components.Text` (PR4).
+"""Tests for :func:`ink.components.Text` (PR4).
 
 Covers:
 
@@ -17,9 +17,9 @@ Expected ANSI strings follow chalk's level-3 output: a single
 
 from __future__ import annotations
 
-from pyink import Box, Text, render_to_string
-from pyink.components.text import Text as TextDirect
-from pyink.core.element import Element
+from ink import Box, Text, render_to_string
+from ink.components.text import Text as TextDirect
+from ink.core.element import Element
 
 ESC = "\x1b"
 
@@ -395,7 +395,7 @@ def test_text_nested_text_inner_style_dropped() -> None:
 
 def test_text_newline_inside_text_inserts_break() -> None:
     """``Text("a", Newline(), "b")`` round-trips with a line break."""
-    from pyink import Newline
+    from ink import Newline
 
     assert render_to_string(Text("a", Newline(), "b")) == "a\nb"
 
@@ -520,16 +520,16 @@ def test_text_scroll_offset_signal_dynamic() -> None:
     """``Signal[int]`` is read at layout time and subscribes the render loop.
 
     The full reactive-pipeline check: the prop accepts a bare
-    :class:`pyink.Signal` (no ``lambda`` wrapper needed), the layout
+    :class:`ink.Signal` (no ``lambda`` wrapper needed), the layout
     reads ``.value`` inside the render-loop effect so a subsequent
     write triggers a re-paint that reflects the new offset.
     """
     import io
     import time
 
-    from pyink import render
-    from pyink.core.signal import Signal, signal
-    from pyink.render.instance import Instance
+    from ink import render
+    from ink.core.signal import Signal, signal
+    from ink.render.instance import Instance
 
     offset_sig: Signal[int] = signal(0)
 

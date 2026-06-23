@@ -1,7 +1,7 @@
 """Spinner example — animated loading indicators (Phase 2 PR2).
 
 Reference: ink-spinner's CLI demo. PyInk ships the canonical ``cli-spinners``
-frame data via :data:`pyink.externals.SPINNERS`; this example mounts a small
+frame data via :data:`ink.externals.SPINNERS`; this example mounts a small
 gallery of them side by side, each labelled with its name and painted in a
 different colour so the frames are easy to tell apart at a glance.
 
@@ -23,10 +23,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import Spinner
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import Spinner
+from ink.render.keys import Key
 
 #: The (name, colour) pairs to show. Picked to span a few visual
 #: families: Braille dots, lines, ASCII, lunar phases, weather. Each

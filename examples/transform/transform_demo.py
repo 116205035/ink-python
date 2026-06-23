@@ -24,8 +24,8 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Spacer, Text, Transform, render
-from pyink.core.element import Element
+from ink import Box, Spacer, Text, Transform, render
+from ink.core.element import Element
 
 
 def _uppercase(line: str, _idx: int) -> str:

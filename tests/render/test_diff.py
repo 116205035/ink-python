@@ -1,4 +1,4 @@
-"""Tests for :mod:`pyink.render.diff` — frame-level inline diff (PR5).
+"""Tests for :mod:`ink.render.diff` — frame-level inline diff (PR5).
 
 The diff module emits cursor-move + line-clear sequences to repaint only
 the rows that actually changed. We never use ``\\x1b[2J`` (full-screen
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from io import StringIO
 
-from pyink.render.diff import write_diff
+from ink.render.diff import write_diff
 
 #: Forbidden sequence — never allowed in inline mode (PRD Decision 3).
 _CLEAR_SCREEN = "\x1b[2J"

@@ -1,4 +1,4 @@
-"""Tests for :func:`pyink.hooks.use_app` (PR6)."""
+"""Tests for :func:`ink.hooks.use_app` (PR6)."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from unittest.mock import patch
 
 import pytest
 
-from pyink import Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.hooks.app import AppHandle
-from pyink.render import terminal as _term_mod
-from pyink.render.keys import Key
-from pyink.render.terminal import Terminal
+from ink import Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.hooks.app import AppHandle
+from ink.render import terminal as _term_mod
+from ink.render.keys import Key
+from ink.render.terminal import Terminal
 
 
 class _FakeTTY(io.StringIO):

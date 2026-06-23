@@ -18,7 +18,7 @@ This demo mounts several banners in a column:
 * ``"centered"`` rendered with ``align="center"`` so pyfiglet
   pre-pads the rows for centring inside ``width=60``.
 
-Requires ``pip install pyink[big-text]`` (or ``pip install pyfiglet``).
+Requires ``pip install ink[big-text]`` (or ``pip install pyfiglet``).
 
 Run::
 
@@ -33,10 +33,10 @@ from __future__ import annotations
 
 import sys
 
-from pyink import Box, Text, create_element, render, use_app, use_input
-from pyink.core.element import Element
-from pyink.externals import BigText
-from pyink.render.keys import Key
+from ink import Box, Text, create_element, render, use_app, use_input
+from ink.core.element import Element
+from ink.externals import BigText
+from ink.render.keys import Key
 
 
 def BigTextDemo() -> Element:
